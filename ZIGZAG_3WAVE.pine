@@ -1,0 +1,215 @@
+//@version=5
+indicator("ZigZag 3-Wave Detector", overlay=true, max_bars_back=5000)
+
+// ============================================================================
+// 設定
+// ============================================================================
+group_zz = "ZigZag設定"
+depth     = input.int(15, "Depth",     minval=1, group=group_zz)
+deviation = input.int(5,  "Deviation", minval=1, group=group_zz)
+backstep  = input.int(2,  "Backstep",  minval=2, group=group_zz)
+
+group_fibo = "フィボナッチ条件"
+fib_min = input.float(0.382, "戻り下限 (38.2%)", group=group_fibo)
+fib_max = input.float(0.618, "戻り上限 (61.8%)", group=group_fibo)
+
+group_vis = "表示設定"
+show_zig   = input.bool(true, "ZigZagライン表示", group=group_vis)
+show_label = input.bool(true, "3波検出ラベル表示", group=group_vis)
+
+// ============================================================================
+// ZigZagロジック (Built-in Pivot Search)
+// ============================================================================
+// TradingView内蔵のZigZag計算に近いアプローチ
+// 1. Pivot High/Lowを見つける
+// 2. Deviation条件等を加味してラインを結ぶ
+
+// 単純なPivot探索ではなく、既存のZigZagライブラリの挙動を模倣するため
+//ta.pivothigh/lowを使うよりも、高値・安値の更新を見ていくロジックを採用
+
+var float last_h = high
+var float last_l = low
+var int dir = 0 // 1 = 上昇(Highへ向かう), -1 = 下降(Lowへ向かう)
+
+// ピボット情報を格納する配列
+// 0: 最新
+var pivot_idx   = array.new_int(0)
+var pivot_price = array.new_float(0)
+var pivot_dir   = array.new_int(0) // 1=High, -1=Low
+
+// 初期化
+if barstate.isfirst
+    dir := 1 // 仮
+    array.push(pivot_idx, bar_index)
+    array.push(pivot_price, low)
+    array.push(pivot_dir, -1)
+
+// --- ZigZag 計算ループ ---
+// DevLucem/ZigLibのロジックは完全には再現できないが、
+// 一般的なZigZag (Depth, Deviation, Backstep) を実装
+
+// Highest/Lowest in Depth
+ph = ta.highest(high, depth)
+pl = ta.lowest(low, depth)
+
+// Pivot High/Lowの検出
+bool is_ph = high == ph
+bool is_pl = low == pl
+
+// 更新ロジック（簡易版）
+// 直近の確定ポイントを取得
+last_idx   = array.get(pivot_idx, 0)
+last_price = array.get(pivot_price, 0)
+last_type  = array.get(pivot_dir, 0)
+
+bool confirmed = false
+
+if last_type == -1 // 直近がLow
+    if is_ph and high > last_price // 新しいHigh候補
+        // 反転条件: Deviation等はここでは簡易的に扱う（Depthで十分なことが多い）
+        // 実際にはもっと複雑だが、ここではDepth期間の最高値更新で判定
+        dir := 1
+        array.unshift(pivot_idx, bar_index)
+        array.unshift(pivot_price, high)
+        array.unshift(pivot_dir, 1)
+        confirmed := true
+    else if is_pl and low < last_price // Lowの更新
+        // 更新
+        array.set(pivot_idx, 0, bar_index)
+        array.set(pivot_price, 0, low)
+        
+else // 直近がHigh
+    if is_pl and low < last_price // 新しいLow候補
+        dir := -1
+        array.unshift(pivot_idx, bar_index)
+        array.unshift(pivot_price, low)
+        array.unshift(pivot_dir, -1)
+        confirmed := true
+    else if is_ph and high > last_price // Highの更新
+        // 更新
+        array.set(pivot_idx, 0, bar_index)
+        array.set(pivot_price, 0, high)
+
+// 配列サイズ管理
+if array.size(pivot_idx) > 20
+    array.pop(pivot_idx)
+    array.pop(pivot_price)
+    array.pop(pivot_dir)
+
+// ============================================================================
+// 3波検出ロジック (Dow + Fibonacci)
+// ============================================================================
+// 過去4点: [3] -> [2] -> [1] -> [0](最新)
+
+var string signal_txt = na
+var color signal_col = na
+
+// 確定したタイミングで判定
+if confirmed and array.size(pivot_idx) >= 4
+    // ----------------------------------------
+    // ロング（上昇3波）判定: HL (Higher Low)
+    // ----------------------------------------
+    // 構造: [3]Low(Start) -> [2]High(1) -> [1]Low(2) -> [0]High(3)へ向かう動き
+    // 条件:
+    // 1. 直近確定がLow ([1]) であること ※コード上、[0]はHigh更新中か確定したばかりの点
+    //    ZigZagの論理として、Highが確定した瞬間に[1]のLowが確定する
+    //    配列: [0]=High, [1]=Low(2), [2]=High(1), [3]=Low(Start)
+    
+    // パターン: Low(Start) -> High(1) -> Low(2) (これが確定した瞬間) -> High(3)へ
+    // Low(Start) = array.get(pivot_price, 3)
+    // High(1)    = array.get(pivot_price, 2)
+    // Low(2)     = array.get(pivot_price, 1) // これが確定
+    
+    // 直近確定したのがLow(2)である場合 
+    // -> 「High(1)からLow(2)への下落」が終わって「High(3)への上昇」が始まった瞬間
+    // 配列の[0]は反転したHigh始点、[1]が確定したLow
+    
+    // ZigZagロジック上、反転して新しいPivotが追加された瞬間にチェック
+    
+    if array.get(pivot_dir, 0) == 1 // 最新がHigh (つまりLowが確定して反転上昇中)
+        p1_low_2   = array.get(pivot_price, 1)
+        p2_high_1  = array.get(pivot_price, 2)
+        p3_low_start = array.get(pivot_price, 3)
+        
+        idx_low_2 = array.get(pivot_idx, 1)
+        
+        // ダウ理論: 安値切り上げ (Higher Low)
+        is_hl = p1_low_2 > p3_low_start
+        
+        // フィボナッチ判定
+        // 上昇幅 (Wave 1) = High(1) - Low(Start)
+        wave1_range = p2_high_1 - p3_low_start
+        
+        // 戻り幅 (Wave 2) = High(1) - Low(2)
+        retracement = p2_high_1 - p1_low_2
+        
+        // 戻り率
+        fibo_ratio = wave1_range != 0 ? retracement / wave1_range : 0
+        
+        // フィルタリング
+        is_fibo_valid = fibo_ratio >= fib_min and fibo_ratio <= fib_max
+        
+        if is_hl and is_fibo_valid
+            // 検出！
+            // 描画: ラベルやライン
+            txt = "Bull 3rd Wave Setup\n" + str.tostring(fibo_ratio * 100, "#.1") + "% Retrace"
+            if show_label
+                label.new(idx_low_2, p1_low_2, txt, color=color.lime, style=label.style_label_up, textcolor=color.white, size=size.small)
+                
+            // 視覚化: Wave 1 と Wave 2 を強調
+            line.new(array.get(pivot_idx, 3), p3_low_start, array.get(pivot_idx, 2), p2_high_1, color=color.new(color.lime, 50), width=2)
+            line.new(array.get(pivot_idx, 2), p2_high_1, array.get(pivot_idx, 1), p1_low_2, color=color.new(color.yellow, 50), width=2)
+            
+            // アラート
+            alert("Bull 3-Wave Setup Detected: " + str.tostring(fibo_ratio*100) + "%")
+
+    // ----------------------------------------
+    // ショート（下降3波）判定: LH (Lower High)
+    // ----------------------------------------
+    // 構造: [3]High(Start) -> [2]Low(1) -> [1]High(2) -> [0]Low(3)へ向かう動き
+    // 配列: [0]=Low, [1]=High(2), [2]=Low(1), [3]=High(Start)
+    
+    if array.get(pivot_dir, 0) == -1 // 最新がLow (つまりHighが確定して反転下落中)
+        p1_high_2    = array.get(pivot_price, 1)
+        p2_low_1     = array.get(pivot_price, 2)
+        p3_high_start = array.get(pivot_price, 3)
+        
+        idx_high_2 = array.get(pivot_idx, 1)
+        
+        // ダウ理論: 高値切り下げ (Lower High)
+        is_lh = p1_high_2 < p3_high_start
+        
+        // フィボナッチ判定
+        // 下落幅 (Wave 1) = High(Start) - Low(1)
+        wave1_range = p3_high_start - p2_low_1
+        
+        // 戻り幅 (Wave 2) = High(2) - Low(1)
+        retracement = p1_high_2 - p2_low_1
+        
+        // 戻り率
+        fibo_ratio = wave1_range != 0 ? retracement / wave1_range : 0
+        
+        // フィルタリング
+        is_fibo_valid = fibo_ratio >= fib_min and fibo_ratio <= fib_max
+        
+        if is_lh and is_fibo_valid
+            // 検出！
+            txt = "Bear 3rd Wave Setup\n" + str.tostring(fibo_ratio * 100, "#.1") + "% Retrace"
+            if show_label
+                label.new(idx_high_2, p1_high_2, txt, color=color.red, style=label.style_label_down, textcolor=color.white, size=size.small)
+                
+            line.new(array.get(pivot_idx, 3), p3_high_start, array.get(pivot_idx, 2), p2_low_1, color=color.new(color.red, 50), width=2)
+            line.new(array.get(pivot_idx, 2), p2_low_1, array.get(pivot_idx, 1), p1_high_2, color=color.new(color.orange, 50), width=2)
+            
+            alert("Bear 3-Wave Setup Detected: " + str.tostring(fibo_ratio*100) + "%")
+
+// ============================================================================
+// 描画: ZigZagライン (通常)
+// ============================================================================
+// 確定したラインを描画
+if show_zig and confirmed and array.size(pivot_idx) >= 2
+    // [1] -> [0] へのライン
+    l_col = array.get(pivot_dir, 0) == 1 ? color.blue : color.orange
+    line.new(array.get(pivot_idx, 1), array.get(pivot_price, 1),
+             array.get(pivot_idx, 0), array.get(pivot_price, 0),
+             color=color.new(color.gray, 70), width=1)

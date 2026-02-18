@@ -1,0 +1,17 @@
+{
+    "name": "midi-piano-web",
+    "private": true,
+    "version": "0.0.0",
+    "type": "module",
+    "scripts": {
+        "dev": "vite",
+        "build": "vite build",
+        "preview": "vite preview"
+    },
+    "dependencies": {
+        "tone": "^14.7.77"
+    },
+    "devDependencies": {
+        "vite": "^5.0.0"
+    }
+}

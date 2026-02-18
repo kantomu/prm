@@ -1,0 +1,32 @@
+//@version=6
+indicator("RSI Triple MA", overlay=false)
+
+// --- Settings ---
+len = input.int(14, "RSI Length")
+src = input(close, "Source")
+
+// --- Calculations ---
+rsi = ta.rsi(src, len)
+
+// --- MA Settings ---
+len1 = input.int(14, "SMA 1 Length")
+len2 = input.int(20, "SMA 2 Length")
+len3 = input.int(25, "SMA 3 Length")
+
+ma1 = ta.sma(rsi, len1)
+ma2 = ta.sma(rsi, len2)
+ma3 = ta.sma(rsi, len3)
+
+// --- Plots ---
+plot(rsi, title="RSI", color=color.purple, linewidth=2)
+plot(ma1, title="SMA 14", color=color.lime, linewidth=1)
+plot(ma2, title="SMA 20", color=color.orange, linewidth=1)
+plot(ma3, title="SMA 25", color=color.red, linewidth=1)
+
+// --- Levels ---
+hline(70, "Overbought", color=color.gray, linestyle=hline.style_dashed)
+hline(50, "Neutral", color=color.gray, linestyle=hline.style_dotted)
+hline(30, "Oversold", color=color.gray, linestyle=hline.style_dashed)
+
+// --- Background ---
+fill(hline(70), hline(30), color=color.new(color.purple, 95))

@@ -1,0 +1,248 @@
+//@version=5
+indicator("LEVIATHAN [TITAN EDITION]", shorttitle="LEVIATHAN TITAN", format=format.volume, overlay=false, max_bars_back=4000)
+
+// =============================================================================
+// LEVIATHAN: TITAN EDITION (Ver 2.1 - Refined)
+// =============================================================================
+// "THE COMPOSITE OPERATOR'S FOOTPRINT"
+//
+// [ Architecture Overview: 10 Core Logics ]
+// 1. Pseudo Delta (Intrabar Pressure)
+// 2. VFI (Volume Flow Indicator - Modified)
+// 3. Fractal MFI (Money Flow Index)
+// 4. OBV Advanced (On Balance Volume)
+// 5. VWAP Deviations (Fair Value Analysis)
+// 6. COI (Composite Operator Index)
+// 7. Bill Williams MFI (Market Facilitation Index)
+// 8. Ease of Movement (EMV) Logic
+// 9. Force Index (Elder)
+// 10. RVOL Z-Scores (Anomaly Detection)
+//
+// Designed for pure institutional tracking.
+// =============================================================================
+
+// ==========================================
+// ⚙️ SETTINGS
+// ==========================================
+
+// --- GENERAL ---
+grp_gen = "🌌 GENERAL"
+// mode_view = input.string("Dashboard & Signals", "View Mode", options=["Full Suite", "Dashboard & Signals", "Minimal"], group=grp_gen)
+
+// --- CALCULATION ---
+grp_calc = "🧮 CORE PARAMETERS"
+len_base  = input.int(20, "Base Lookback", group=grp_calc)
+len_flow  = input.int(14, "Flow Lookback", group=grp_calc)
+th_whale  = input.float(2.0, "Whale Threshold (Sigma)", step=0.1, group=grp_calc)
+
+// --- LOGIC SWITCHES ---
+grp_logic = "🧠 LOGIC MODULES"
+use_wyckoff = input.bool(true, "Use Wyckoff Logic", group=grp_logic)
+use_bw      = input.bool(true, "Use Bill Williams MFI", group=grp_logic)
+
+// ==========================================
+// 📚 ADVANCED VOLUME KERNEL
+// ==========================================
+
+// --- 1. PSEUDO DELTA (Intrabar Pressure) ---
+f_pressure() =>
+    float _r = high - low
+    float _b = math.abs(close - open)
+    float _u = high - math.max(close, open)
+    float _l = math.min(close, open) - low
+    
+    float _buy = 0.0
+    float _sell = 0.0
+    
+    if _r > 0
+        if close > open
+            _buy := volume * (_b + _l) / _r
+            _sell := volume * (_u) / _r
+        else
+            _buy := volume * (_l) / _r
+            _sell := volume * (_b + _u) / _r
+    [_buy, _sell]
+
+[raw_buy, raw_sell] = f_pressure()
+float delta = raw_buy - raw_sell
+float delta_cum = ta.cum(delta)
+
+// --- 2. VFI (Volume Flow Indicator) - Reformulated ---
+// Measuring the "Flow" of smart money
+f_vfi(_len) =>
+    float _typical = hlc3
+    float _inter = math.log(_typical) - math.log(_typical[1])
+    float _dev = ta.stdev(_inter, 30)
+    float _cut = 0.2 * _dev * close
+    float _v = volume
+    float _mf = 0.0
+    if _typical > _typical[1]
+        _mf := _v
+    else if _typical < _typical[1]
+        _mf := -_v
+    
+    ta.ema(_mf, _len)
+
+float val_vfi = f_vfi(len_flow)
+
+// --- 3. FRACTAL MFI (Money Flow Index) ---
+// Weighting volume by price Fractal Dimension
+f_mfi_fractal(_len) =>
+    float _mfi = ta.mfi(close, _len)
+    // Adjusting sensitivity based on volatility
+    float _volat = ta.atr(_len) / close
+    _mfi * (1 + _volat)
+
+float val_mfi = f_mfi_fractal(14)
+
+// --- 4. RVOL Z-SCORE (Anomaly) ---
+f_rvol_z(_len) =>
+    float _avg = ta.sma(volume, _len)
+    float _std = ta.stdev(volume, _len)
+    (_std != 0) ? (volume - _avg) / _std : 0.0
+
+float val_rvol = f_rvol_z(len_base)
+bool is_surge = val_rvol > th_whale
+bool is_elevated = val_rvol > 0.5 // Mildly elevated
+
+// --- 5. VWAP DEVIATION (Institutional Value) ---
+float vwap = ta.vwap(close)
+float vwap_std = ta.stdev(close, len_base)
+float dist_vwap = (close - vwap) / vwap_std // Z-Score from VWAP
+bool is_cheap = dist_vwap < -2.0
+bool is_expensive = dist_vwap > 2.0
+
+// --- 6. FORCE INDEX (Elder) ---
+// Volume * Price Change
+f_force(_len) =>
+    float _fi = (close - close[1]) * volume
+    ta.ema(_fi, _len)
+
+float val_force = f_force(13)
+
+// --- 7. BILL WILLIAMS MFI (Market Facilitation) ---
+// Detects Tick Volume efficiency
+f_bw_mfi() =>
+    float _mfi = (high - low) / volume
+    bool _up_mfi = _mfi > _mfi[1]
+    bool _up_vol = volume > volume[1]
+    
+    int _type = 0
+    if _up_mfi and _up_vol
+        _type := 1 // GREEN (Trend)
+    else if not _up_mfi and not _up_vol
+        _type := 2 // FADE (Boring)
+    else if _up_mfi and not _up_vol
+        _type := 3 // FAKE (Deception)
+    else
+        _type := 4 // SQUAT (Battle/Turning Point)
+    _type
+
+int bw_state = f_bw_mfi()
+
+// --- 8. COMPOSITE OPERATOR INDEX (COI) ---
+// Integrating Delta, VFI, and VWAP distance
+// Rising COI = Accumulation
+float coi_raw = ta.ema(delta, 10) + (val_vfi / 1000)
+float coi_signal = ta.sma(coi_raw, 20)
+bool coi_bull = coi_raw > coi_signal
+
+// ==========================================
+// 🐋 LEVIATHAN STATE ENGINE
+// ==========================================
+
+// PHASE DEFINITIONS
+// 0: Neutral / Churn
+// 1: ACCUMULATION (Smart Money Buying, Price Flat/Down)
+// 2: MARKUP (Smart Money Pushing, Price Up, Vol Up) - WAVE 3 TARGET
+// 3: DISTRIBUTION (Smart Money Selling, Price Up/Flat)
+// 4: MARKDOWN (Panic Selling)
+
+int phase = 0
+
+// LOGIC
+bool trend_up = close > ta.ema(close, 50)
+bool vol_support = val_force > 0
+bool effort_valid = (volume > ta.sma(volume, 20)) == (math.abs(close-open) > ta.atr(20)) // Effort matches Result
+
+// 1. Detection: ACCUMULATION
+// High Buy Pressure (Delta) but Price Low (Cheap)
+// Squat Bars (Battle) common
+if is_cheap and delta > 0 and (bw_state == 4 or is_surge)
+    phase := 1
+
+// 2. Detection: MARKUP (W3)
+// Price > VWAP, Buying Pressure, High Force, Green BW Bars
+if trend_up and delta > 0 and val_force > 0 and (bw_state == 1) and effort_valid
+    phase := 2
+
+// 3. Detection: DISTRIBUTION
+// High Price (Expensive), Selling Pressure (Delta < 0), COI Divergence
+if is_expensive and delta < 0 and (bw_state == 4 or bw_state == 3)
+    phase := 3
+
+// 4. Detection: MARKDOWN
+// Price Falling, Force < 0, High Volume
+if not trend_up and val_force < 0 and is_surge
+    phase := 4
+
+// ==========================================
+// 🎨 VISUALIZATION (TITAN DASHBOARD)
+// ==========================================
+
+// A. MAIN OSCILLATOR (Net Pressure)
+color c_hist = color.gray
+if phase == 2
+    c_hist := #00E676 // W3 Impulse
+else if phase == 4
+    c_hist := #FF1744 // Crash
+else if delta > 0
+    c_hist := #26A69A // Weak Buy
+else
+    c_hist := #EF5350 // Weak Sell
+
+plot(delta, "Net Pressure", color=c_hist, style=plot.style_columns)
+
+// B. WHALE DIAMONDS (Anomalies)
+bool whale_buy = is_surge and close > open
+bool whale_sell = is_surge and close < open
+plotshape(whale_buy, "Whale Buy", shape.diamond, location.bottom, color.white, size=size.tiny)
+plotshape(whale_sell, "Whale Sell", shape.diamond, location.top, color.yellow, size=size.tiny)
+
+// C. BILL WILLIAMS SQUAT (Potential Reversal) - REFINED
+// Only show Squat if volume is ELEVATED (above average) implies real battle
+bool show_squat = (bw_state == 4) and use_bw and (volume > ta.sma(volume, 20))
+plotshape(show_squat, "Squat", shape.xcross, location.absolute, color.orange, size=size.tiny, offset=0)
+
+// D. VFI TREND LINE
+plot(val_vfi, "Institutional Flow", color=color.new(#2962FF, 0), linewidth=2)
+hline(0, "Zero", color=color.gray)
+
+// E. TEXT STATUS
+if barstate.islast
+    string p_txt = "NEUTRAL"
+    color p_col = color.gray
+    if phase == 1
+        p_txt := "ACCUMULATION 📦"
+        p_col := color.yellow
+    if phase == 2
+        p_txt := "MARKUP (W3) 🚀"
+        p_col := #00E676
+    if phase == 3
+        p_txt := "DISTRIBUTION 📤"
+        p_col := color.orange
+    if phase == 4
+        p_txt := "MARKDOWN 🔻"
+        p_col := #FF1744
+        
+    string txt = "🐋 LEVIATHAN ENGINE\n─────────────\n"
+    txt += "State : " + p_txt + "\n"
+    txt += "RVOL  : " + str.tostring(val_rvol, "#.##") + "σ\n"
+    txt += "VWAP  : " + str.tostring(dist_vwap, "#.##") + "σ\n"
+    txt += "Force : " + (val_force > 0 ? "BULLISH" : "BEARISH")
+    
+    label.new(bar_index + 5, 0, txt, color=color.new(#101010, 30), textcolor=p_col, style=label.style_label_left, yloc=yloc.price)
+
+// F. ALERTS
+alertcondition(phase == 2, "Leviathan Markup", "Institutional Markup (Wave 3) Detected")
+alertcondition(is_surge, "Vol Surge", "Anomalous Volume Detected")

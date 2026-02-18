@@ -1,0 +1,173 @@
+//@version=5
+indicator(title="Keltner Channel + Squeeze", shorttitle="KC+SQZ", overlay=true, timeframe="", timeframe_gaps=true)
+
+// ==========================================
+// ⚙️ Settings
+// ==========================================
+// Keltner Settings
+group_kc = "Keltner Channel"
+kcLength = input.int(20, minval=1, title="KC Length", group=group_kc)
+kcMult = input.float(2.0, title="KC Multiplier", group=group_kc)
+atrLength = input.int(10, minval=1, title="ATR Length", group=group_kc)
+useTrueRange = input.bool(true, title="Use TrueRange", group=group_kc)
+
+// Bollinger Settings
+group_bb = "Bollinger Bands"
+bbLength = input.int(20, minval=1, title="BB Length", group=group_bb)
+bbMult = 2.0
+
+// Volume Filter Settings
+group_vol = "Volume Filter"
+useVolFilter = input.bool(true, "Enable Volume Filter", group=group_vol)
+volMaLength = input.int(20, "Volume MA Length", minval=1, group=group_vol)
+volLookback = input.int(5, "Check Last N Bars", minval=1, group=group_vol)
+volThreshold = input.int(3, "Required Falling Bars", minval=1, group=group_vol)
+
+// SMA Zone Filter Settings
+group_sma = "SMA Zone Filter"
+useSmaFilter = input.bool(true, "Enable SMA Zone Filter", group=group_sma)
+smaFastLength = input.int(75, "SMA Fast Length", minval=1, group=group_sma)
+smaSlowLength = input.int(200, "SMA Slow Length", minval=1, group=group_sma)
+
+// DMI Scrutiny Settings
+group_dmi = "DMI Momentum Scrutiny"
+adxLen = input.int(14, title="ADX/DI Period", group=group_dmi)
+diAvgLen = input.int(14, title="DI Smoothing Period", group=group_dmi)
+lookbackLen = input.int(10, title="Scrutiny Lookback", group=group_dmi)
+adxTh = input.int(40, title="ADX Threshold", group=group_dmi)
+
+src = input.source(close, title="Source", group="General")
+
+// ==========================================
+// 📐 Keltner Calculation (EMA)
+// ==========================================
+kcMa = ta.ema(src, kcLength)
+range_val = useTrueRange ? ta.tr : (high - low)
+rangema = ta.ema(range_val, atrLength)
+kcUpper = kcMa + rangema * kcMult
+kcLower = kcMa - rangema * kcMult
+
+// ==========================================
+// 📐 Bollinger Calculation (SMA)
+// ==========================================
+bbMa = ta.sma(src, bbLength)
+bbDev = bbMult * ta.stdev(src, bbLength)
+bbUpper = bbMa + bbDev
+bbLower = bbMa - bbDev
+
+// ==========================================
+// 📊 Volume Filter Logic
+// ==========================================
+volMa = ta.sma(volume, volMaLength)
+volFalling = volMa < volMa[1]
+fallingCount = math.sum(volFalling ? 1 : 0, volLookback)
+volCondition = fallingCount >= volThreshold
+
+// ==========================================
+// 📈 SMA Zone Logic
+// ==========================================
+smaFast = ta.sma(src, smaFastLength)
+smaSlow = ta.sma(src, smaSlowLength)
+isBetweenSma = (src > math.min(smaFast, smaSlow)) and (src < math.max(smaFast, smaSlow))
+
+// ==========================================
+// 🧠 DMI Scrutiny Logic
+// ==========================================
+[plusDI, minusDI, adx] = ta.dmi(adxLen, adxLen)
+// Smoothing
+avgPlusDI = ta.sma(plusDI, diAvgLen)
+avgMinusDI = ta.sma(minusDI, diAvgLen)
+
+// Scrutiny Points (10 Period)
+// Rise: +DI Rising AND -DI Falling
+isRiseCond = ta.rising(avgPlusDI, 1) and ta.falling(avgMinusDI, 1)
+// Fall: +DI Falling AND -DI Rising
+isFallCond = ta.falling(avgPlusDI, 1) and ta.rising(avgMinusDI, 1)
+
+risePoints = math.sum(isRiseCond ? 1 : 0, lookbackLen)
+fallPoints = math.sum(isFallCond ? 1 : 0, lookbackLen)
+
+// High ADX Logic (100 Period Lookback)
+// Check if ADX > 40 occurred in last 100 bars
+adxHigh = adx > adxTh
+barsSinceHighAdx = ta.barssince(adxHigh)
+hasHighAdx = not na(barsSinceHighAdx) and barsSinceHighAdx < 100
+
+// Determine Direction
+var int trendDir = 0 // 1 = Long, -1 = Short
+
+if hasHighAdx
+    // Use the DI values AT THE MOMENT of the most recent ADX peak/high point
+    // Note: User says "When > 40, decide based on which DI is higher AT THAT TIME"
+    // "Most recent" implies valuewhen
+    pDI_at_high = ta.valuewhen(adxHigh, plusDI, 0)
+    mDI_at_high = ta.valuewhen(adxHigh, minusDI, 0)
+    
+    if pDI_at_high > mDI_at_high
+        trendDir := 1
+    else
+        trendDir := -1
+else
+    // Use Point Scoring
+    if risePoints > fallPoints
+        trendDir := 1
+    else if fallPoints > risePoints
+        trendDir := -1
+    // else keep previous (tie-break)
+
+// ==========================================
+// 🧠 Squeeze Logic
+// ==========================================
+bbWidth = bbUpper - bbLower
+contracting = bbWidth < bbWidth[1] and bbWidth[1] < bbWidth[2]
+insideKC = bbUpper <= kcUpper and bbLower >= kcLower
+
+baseSqueeze = contracting and insideKC
+finalSqueeze = baseSqueeze
+
+if useVolFilter
+    finalSqueeze := finalSqueeze and volCondition
+
+if useSmaFilter
+    finalSqueeze := finalSqueeze and isBetweenSma
+
+// ==========================================
+// 🎨 Plotting
+// ==========================================
+// Keltner Plots
+u_kc = plot(kcUpper, color=color.new(#009688, 0), title="KC Upper")
+l_kc = plot(kcLower, color=color.new(#009688, 0), title="KC Lower")
+plot(kcMa, color=color.new(#2962FF, 0), title="KC Basis")
+fill(u_kc, l_kc, color=color.new(#009688, 95), title="KC Fill")
+
+// Bollinger Plots
+plot(bbUpper, "BB Upper", color=color.new(#F23645, 0))
+plot(bbLower, "BB Lower", color=color.new(#F23645, 0))
+
+// SMA Plots
+plot(smaFast, "SMA 75", color=color.new(color.orange, 0))
+plot(smaSlow, "SMA 200", color=color.new(color.white, 0))
+
+// Background Color Squeeze Signal
+// User Request: "Determine direction of KC+SQZ"
+// We can tint the squeeze background based on the DMI trend
+// Long Squeeze = Red (Base) mixed with Green? Or just Red background with Arrows?
+// User said "Present label-less arrows" and "Background Red (from previous)".
+// I will keep Red background for Squeeze (Warning) and add Arrows for Direction.
+bgcolor(finalSqueeze ? color.new(color.red, 80) : na, title="Squeeze Background")
+
+// DMI Trend Arrows (Label-less)
+// Show arrows constantly to indicate bias? Or only on change?
+// "Present arrows" usually means essentially continuously or on trend switch.
+// Given "Long/Short label-less arrows", I'll plot them on every bar or just on change?
+// Usually oscillators show state. Let's show arrows on bar to indicate current "Dominant Force".
+// To avoid clutter, maybe just small arrows or only when Squeeze is active?
+// User: "If rise points > fall points -> Long arrow...".
+// This implies continuous state evaluation. 
+// I will plot arrows continuously but small/transparent or maybe only when trend changes?
+// "Determine the direction... provide label-less arrows".
+// I'll plot arrows when `trendDir` changes OR maybe just consistently at top/bottom.
+// Let's plot standard arrows based on current `trendDir`.
+
+plotshape(trendDir == 1, "Bullish Bias", shape.arrowup, location.belowbar, color.lime, size=size.tiny, display=display.all)
+plotshape(trendDir == -1, "Bearish Bias", shape.arrowdown, location.abovebar, color.red, size=size.tiny, display=display.all)

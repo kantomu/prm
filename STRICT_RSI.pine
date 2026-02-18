@@ -1,0 +1,93 @@
+//@version=5
+indicator(title="STRICT RSI", shorttitle="S-RSI", overlay=true, format=format.price, precision=2, timeframe="", timeframe_gaps=true)
+
+// ==========================================
+// ⚙️ Settings
+// ==========================================
+rsiLengthInput = input.int(14, minval=1, title="RSI Length", group="RSI Settings")
+rsiSourceInput = input.source(close, "Source", group="RSI Settings")
+// Divergence removed from display or hidden to prevent scaling issues on overlay
+calculateDivergence = input.bool(false, title="Calculate Divergence (Data Window Only)", group="RSI Settings", display = display.none)
+
+// ==========================================
+// 📐 RSI Calculation
+// ==========================================
+change = ta.change(rsiSourceInput)
+up = ta.rma(math.max(change, 0), rsiLengthInput)
+down = ta.rma(-math.min(change, 0), rsiLengthInput)
+rsi = down == 0 ? 100 : up == 0 ? 0 : 100 - (100 / (1 + up / down))
+
+// Plot RSI (Hidden from Chart, visible in Data Window if needed)
+// We use display.none so it doesn't mess up the scale
+plot(rsi, "RSI", color=#7E57C2, display=display.none)
+// Bands are irrelevant on Price Chart
+// hline(70, "RSI Upper Band", color=#787B86, display=display.none)
+// hline(50, "RSI Middle Band", color=color.new(#787B86, 50), display=display.none)
+// hline(30, "RSI Lower Band", color=#787B86, display=display.none)
+
+// ==========================================
+// 🌊 Smoothing (Fixed SMA 14)
+// ==========================================
+smoothingMA = ta.sma(rsi, 14)
+plot(smoothingMA, "RSI Smoothed (SMA14)", color=color.yellow, display=display.none)
+
+// ==========================================
+// 🧠 Strict Logic Implementation
+// ==========================================
+
+// 1. Past Strength (Shock)
+// 過去50期間以内にRSIが70を超えた（ロング）/30を下回った（ショート）事実があるか
+shock_lookback = 50
+bars_since_ob = ta.barssince(rsi > 70) 
+has_bull_shock = not na(bars_since_ob) and bars_since_ob <= shock_lookback
+
+bars_since_os = ta.barssince(rsi < 30)
+has_bear_shock = not na(bars_since_os) and bars_since_os <= shock_lookback
+
+
+// 2. Firmness (底堅さ)
+// その衝撃以降、RSIの平滑化ライン（SMA14）が40を下回っていない（ロング）/60を超えていない（ショート）か
+is_firm_bull = false
+if has_bull_shock
+    // Check lowest SMA since the overbought condition
+    // We add 1 to include the current bar and the shock bar
+    low_since = ta.lowest(smoothingMA, bars_since_ob + 1)
+    if low_since >= 40
+        is_firm_bull := true
+
+is_firm_bear = false
+if has_bear_shock
+    // Check highest SMA since the oversold condition
+    high_since = ta.highest(smoothingMA, bars_since_os + 1)
+    if high_since <= 60
+        is_firm_bear := true
+
+// 3. Trigger & Signal
+// 底堅さが確認された状態で、平滑化ラインが反転（上向き/下向き）した瞬間にシグナル
+// Reversal Up: Current > Prev and Prev <= Prev2 (Local valley or turn up)
+// Reversal Down: Current < Prev and Prev >= Prev2 (Local peak or turn down)
+
+ma_up = smoothingMA > smoothingMA[1] and smoothingMA[1] <= smoothingMA[2]
+ma_down = smoothingMA < smoothingMA[1] and smoothingMA[1] >= smoothingMA[2]
+
+long_signal = is_firm_bull and ma_up
+short_signal = is_firm_bear and ma_down
+
+// ==========================================
+// 🎨 Plotting Signals (Arrows on Chart)
+// ==========================================
+// Upper Arrow (Short) -> Above Bar
+plotshape(short_signal, title="Strict Short", style=shape.labeldown, location=location.abovebar, color=color.red, text="SHORT", textcolor=color.white, size=size.small)
+
+// Lower Arrow (Long) -> Below Bar
+plotshape(long_signal, title="Strict Long", style=shape.labelup, location=location.belowbar, color=color.green, text="LONG", textcolor=color.white, size=size.small)
+
+// Alert Conditions
+alertcondition(long_signal, title="Strict Long Alert", message="RSI Strict Long Signal")
+alertcondition(short_signal, title="Strict Short Alert", message="RSI Strict Short Signal")
+
+// ==========================================
+// Divergence (Cleaned up for Overlay)
+// ==========================================
+// Divergence plotting on an overlay chart is tricky if it draws lines on "RSI" values.
+// We disable the drawings to prevent confusion, as the user wants clean arrows.

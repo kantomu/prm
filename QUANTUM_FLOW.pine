@@ -1,0 +1,153 @@
+//@version=5
+indicator("QUANTUM FLOW [Fusion Core]", shorttitle="QF v3", overlay=true, max_bars_back=1000)
+
+// ==========================================
+// 🌊 QUANTUM FLOW v3 - Fusion Core (10-Year Edition)
+// ==========================================
+// Concept: Micro-Structure Entry & Dynamic Extension Exit
+// Designed to pair with: TRUE NORTH (Macro) & WAVE 3-3 SNIPER (Trigger)
+// ==========================================
+
+// ==========================================
+// ⚙️ SETTINGS
+// ==========================================
+// 1. Micro-Structure (Entry Engine)
+grp_entry = "🔬 Micro-Structure (Entry Engine)"
+use_delta   = input.bool(true, "Filter: Pseudo Delta (Buying Pressure)", group=grp_entry)
+min_body    = input.int(50, "Filter: Min Body % of Range", minval=0, maxval=100, group=grp_entry)
+vol_mult    = input.float(1.2, "Filter: Min Volume vs Avg", group=grp_entry)
+
+// 2. Dynamic Trailing (Exit)
+grp_exit = "🚀 Dynamic Trailing (Exit Engine)"
+use_trail   = input.bool(true, "Show Trailing Stop Line", group=grp_exit)
+base_atr    = input.int(14, "Base ATR Period", group=grp_exit)
+trail_mult_safe = input.float(1.2, "Multiplier: Turbulent (Tight)", group=grp_exit)
+trail_mult_flow = input.float(3.0, "Multiplier: Laminar (Loose)", group=grp_exit)
+
+// 3. Physics Core (10-Year Robustness)
+grp_core = "⚛️ Physics Core (Universality)"
+len_frac    = input.int(20, "Fractal Dimension Period", group=grp_core)
+len_ent     = input.int(10, "Entropy Period", group=grp_core)
+
+// ==========================================
+// ⚛️ CORE PHYSICS ENGINE (Robustness Layer)
+// ==========================================
+
+// 1. Fractal Dimension (Market Efficiency)
+f_fractal_dim(_src, _len) =>
+    float _n1 = (ta.highest(_src, _len) - ta.lowest(_src, _len)) / _len
+    float _n2 = (ta.highest(_src, _len/2) - ta.lowest(_src, _len/2)) / (_len/2)
+    float _dim = (_n1 > 0 and _n2 > 0) ? (math.log(_n1 + _n2) / math.log(_len)) + 1.0 : 1.5
+    _dim
+
+// 2. Information Entropy (Market Order)
+f_entropy(_src, _len) =>
+    float _sum = 0.0
+    for i = 0 to _len-1
+        _p = math.abs(_src[i] - _src[i+1])
+        _sum := _sum + (_p > 0 ? _p * math.log(_p) : 0)
+    -_sum / _len
+
+// 🚀 PHYSICS STATE DETECTION
+float fd = f_fractal_dim(close, len_frac)
+bool is_laminar = fd < 1.35 // Clean Trend
+bool is_turbulent = fd > 1.6 // Choppy / Exhaustion
+
+// ==========================================
+// 🔬 MICRO-STRUCTURE ENGINE (Entry Veto)
+// ==========================================
+
+// 1. Pseudo Delta (Intrabar Pressure)
+f_pseudo_delta() =>
+    float _range = high - low
+    float _body  = math.abs(close - open)
+    float _u_wick = high - math.max(close, open)
+    float _l_wick = math.min(close, open) - low
+    
+    float _buy_p = 0.0
+    float _sell_p = 0.0
+    
+    if _range > 0
+        if close > open // Bull Candle
+            _buy_p := volume * (_body + _l_wick) / _range
+            _sell_p := volume * (_u_wick) / _range
+        else // Bear Candle
+            _buy_p := volume * (_l_wick) / _range
+            _sell_p := volume * (_body + _u_wick) / _range
+            
+    [_buy_p, _sell_p]
+
+[buy_vol, sell_vol] = f_pseudo_delta()
+bool is_buyer_dom = buy_vol > sell_vol * 1.5
+bool is_seller_dom = sell_vol > buy_vol * 1.5
+
+// 2. Volume & Shape Quality
+float vol_avg = ta.sma(volume, 20)
+bool good_vol = volume > vol_avg * vol_mult
+float body_pct = (high - low) != 0 ? math.abs(close - open) / (high - low) * 100 : 0
+bool good_shape = body_pct > min_body
+
+// 🚦 ENTRY VETO SIGNAL
+bool veto_entry_long = use_delta and (is_seller_dom or not good_vol or not good_shape)
+bool veto_entry_short = use_delta and (is_buyer_dom or not good_vol or not good_shape)
+
+// ==========================================
+// 🚀 DYNAMIC TRAILING ENGINE (Extension Logic)
+// ==========================================
+
+// State Variables
+var int trend_dir = 1 // 1 = Long, -1 = Short
+var float trail_stop = na
+
+float atr = ta.atr(base_atr)
+float dyn_mult = is_laminar ? trail_mult_flow : trail_mult_safe
+float long_stop_level = close - (atr * dyn_mult)
+float short_stop_level = close + (atr * dyn_mult)
+
+// Auto-Initialize
+if na(trail_stop)
+    trail_stop := long_stop_level
+
+// Logic Switcher
+if trend_dir == 1
+    // >>> LONG MODE <<<
+    // Ratchet UP only
+    float next_stop = math.max(trail_stop, long_stop_level)
+    
+    // Check Breakout (Close closes below stop)
+    if close < trail_stop
+        trend_dir := -1
+        trail_stop := short_stop_level
+    else
+        trail_stop := next_stop
+else
+    // >>> SHORT MODE <<<
+    // Ratchet DOWN only
+    float next_stop = math.min(trail_stop, short_stop_level)
+    
+    // Check Breakout (Close closes above stop)
+    if close > trail_stop
+        trend_dir := 1
+        trail_stop := long_stop_level
+    else
+        trail_stop := next_stop
+
+// ==========================================
+// 🎨 VISUALIZATION
+// ==========================================
+
+// Color Logic
+// Long = Blue, Short = Red, Turbulent = Gray (Warning)
+color c_final = is_turbulent ? color.gray : (trend_dir == 1 ? color.blue : color.red)
+
+// Plot Line
+plot(use_trail ? trail_stop : na, "Dynamic Trail", color=c_final, style=plot.style_linebr, linewidth=2)
+
+// Plot Entry Veto (Ghost Bars)
+barcolor(veto_entry_long and close > open ? color.gray : na, title="Veto Long Candle")
+barcolor(veto_entry_short and close < open ? color.gray : na, title="Veto Short Candle")
+
+// Alerts
+alertcondition(is_laminar, "🌊 Laminar Flow Start", "Market entering clean trend state")
+alertcondition(is_turbulent, "🌪️ Turbulence Alert", "Market entering choppy state - Tighten stops")
+alertcondition(ta.cross(close, trail_stop), "🚀 Trend Reversal", "Price broke the trailing stop line")

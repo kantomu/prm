@@ -1,0 +1,1789 @@
+//@version=5
+indicator("TRUE NORTH", shorttitle="TRUE NORTH", overlay=true, max_bars_back=5000)
+// 🌌 Singularity Logic: Navier-Stokes Fluidity, Symplectic Phase
+// 🛡️ Physics-Based Turbulence Detection & Geometric Sync
+// ⚡ Optimized: Selection sort O(n²) on small arrays (n≤15)
+// 🤖 ML-inspired: Adaptive correlation-based weights
+
+
+
+
+
+// ==========================================
+// 📚 使用ガイド
+// ==========================================
+// 【推奨チャート】15分足 or 60分足（月足・週足は避ける）
+// 【推奨銘柄】BTCUSD, USDJPY（24時間稼働）
+// 【メモリ対策】複数インジケーター併用時は注意
+// 【データ鮮度】月次データ: 毎月15日前後更新（CPI/失業率/信頼感）
+// 【週末注意】金利・株式データは金曜終値で停止（BTC/FXは継続）
+
+
+// ==========================================
+// ==========================================
+// 設定 (Settings)
+// ==========================================
+
+// 1. Language / 言語
+string lang_select = input.string("English", "Language", options=["English", "Español", "日本語"], group="1. GENERAL")
+
+// Language Helper
+f_lang(_en, _es, _jp) =>
+    lang_select == "Español" ? _es : lang_select == "日本語" ? _jp : _en
+
+// 2. Mode / モード
+string mode_label = input.string("Auto (Chart)", "Strategy Perspective", options=["Auto (Chart)", "Scalp (1m)", "Tactical (5m)", "Day (15m)", "Day-Swing (1h)", "Swing (4h)", "Position (1D)"], group="1. GENERAL")
+
+// 3. Position / 配置
+string pos_string = input.string("Bottom Right ↘", "Position", options=["Top Right ↗", "Top Center ⬆", "Top Left ↖", "Middle Right 👉", "Middle Center ⏺", "Middle Left 👈", "Bottom Right ↘", "Bottom Center ⬇", "Bottom Left ↙"], group="1. GENERAL")
+
+// 4. Size / サイズ
+int table_scale = input.int(4, "Size (1-7)", minval=1, maxval=7, group="1. GENERAL")
+
+// 5. Signals Only / シグナルのみ表示
+bool show_signals_only = input.bool(false, "Show Signals Only (Compact Mode)", group="1. GENERAL")
+
+// 6. Watchlist / ウォッチリスト
+string GRP_WATCH = "2. WATCHLIST"
+bool en_xau = input.bool(true,  "Gold (XAUUSD)", group=GRP_WATCH)
+bool en_btc = input.bool(true,  "Bitcoin (BTCUSD)", group=GRP_WATCH)
+bool en_nas = input.bool(true,  "Nasdaq (NAS100)", group=GRP_WATCH)
+bool en_uj  = input.bool(true,  "USDJPY", group=GRP_WATCH)
+bool en_eu  = input.bool(true,  "EURUSD", group=GRP_WATCH)
+bool en_oil = input.bool(true, "Crude Oil (USOIL)", group=GRP_WATCH)
+bool en_jpn = input.bool(true, "Nikkei 225 (JP225)", group=GRP_WATCH)
+bool en_spx = input.bool(true, "S&P 500 (US500)", group=GRP_WATCH)
+// Full Watchlist Options (Default OFF for optimization)
+bool en_dax = input.bool(false, "DAX 40 (GER40)", group=GRP_WATCH)
+bool en_us02y = input.bool(false, "US 2Y Yield (US02Y)", group=GRP_WATCH)
+bool en_gu  = input.bool(false, "GBPUSD", group=GRP_WATCH)
+bool en_au  = input.bool(false, "AUDUSD", group=GRP_WATCH)
+bool en_ej  = input.bool(false, "EURJPY", group=GRP_WATCH)
+bool en_gj  = input.bool(false, "GBPJPY", group=GRP_WATCH)
+bool en_aj  = input.bool(false, "AUDJPY", group=GRP_WATCH)
+
+
+// ==========================================
+// 🔒 HIDDEN PARAMETERS (Hardcoded)
+// ==========================================
+
+// Map Position String to Pine Constant
+string pos_input = position.bottom_right
+if pos_string == "Top Right ↗"
+    pos_input := position.top_right
+else if pos_string == "Top Center ⬆"
+    pos_input := position.top_center
+else if pos_string == "Top Left ↖"
+    pos_input := position.top_left
+else if pos_string == "Middle Right 👉"
+    pos_input := position.middle_right
+else if pos_string == "Middle Center ⏺"
+    pos_input := position.middle_center
+else if pos_string == "Middle Left 👈"
+    pos_input := position.middle_left
+else if pos_string == "Bottom Right ↘"
+    pos_input := position.bottom_right
+else if pos_string == "Bottom Center ⬇"
+    pos_input := position.bottom_center
+else if pos_string == "Bottom Left ↙"
+    pos_input := position.bottom_left
+
+// ==========================================
+// ⚙️ TIME ENGINE: Multi-Timeframe Lookback Logic
+// ==========================================
+// Determine Mode (Manual or Auto)
+string sel_mode = mode_label
+if mode_label == "Auto (Chart)"
+    int sec = timeframe.in_seconds("")
+    if sec <= 60
+        sel_mode := "Scalp (1m)"
+    else if sec <= 300
+        sel_mode := "Tactical (5m)"
+    else if sec <= 900
+        sel_mode := "Day (15m)"
+    else if sec <= 3600
+        sel_mode := "Day-Swing (1h)"
+    else if sec <= 14400
+        sel_mode := "Swing (4h)"
+    else
+        sel_mode := "Position (1D)"
+
+// Define Logic Tuples: [Resolution, CTX_FX, ANC_FX, CTX_ST, ANC_ST]
+// CTX = Short Term Context, ANC = Long Term Anchor
+// FX (24h) vs Stock (6.5h) adjusted manually
+string calc_res = "15"
+int lb_ctx_fx = 96
+int lb_anc_fx = 480
+int lb_ctx_st = 26
+int lb_anc_st = 130
+
+if sel_mode == "Scalp (1m)"
+    calc_res := "1", lb_ctx_fx := 60, lb_anc_fx := 240, lb_ctx_st := 60, lb_anc_st := 240
+else if sel_mode == "Tactical (5m)"
+    calc_res := "5", lb_ctx_fx := 72, lb_anc_fx := 288, lb_ctx_st := 72, lb_anc_st := 78
+else if sel_mode == "Day (15m)"
+    calc_res := "15", lb_ctx_fx := 96, lb_anc_fx := 480, lb_ctx_st := 26, lb_anc_st := 130
+else if sel_mode == "Day-Swing (1h)"
+    calc_res := "60", lb_ctx_fx := 48, lb_anc_fx := 240, lb_ctx_st := 14, lb_anc_st := 70
+else if sel_mode == "Swing (4h)"
+    calc_res := "240", lb_ctx_fx := 30, lb_anc_fx := 120, lb_ctx_st := 10, lb_anc_st := 40
+else if sel_mode == "Position (1D)"
+    calc_res := "D", lb_ctx_fx := 22, lb_anc_fx := 66, lb_ctx_st := 22, lb_anc_st := 66
+
+// Global Logic Settings (Derived)
+string mode_select = (sel_mode == "Swing (4h)" or sel_mode == "Position (1D)" or sel_mode == "Day-Swing (1h)") ? "Swing" : "Intraday"
+float sc_threshold = 1.0
+int z_smooth_len = 3
+// Lookback Assignment for Global Scope
+int lookback_bars_fx = lb_ctx_fx
+int macro_lb_fx = lb_anc_fx
+int lookback_bars_stock = lb_ctx_st
+int macro_lb_stock = lb_anc_st
+
+int max_pairs = 13
+string layout_mode = "Standard"
+
+// UI Theme (Dark)
+string theme_select = "Dark"
+bool show_head = true
+bool mono_head = false
+string sz_head_base = size.large
+bool show_risk = true
+bool mono_risk = false
+string sz_sub_base = size.normal
+bool show_ctx = true
+bool mono_ctx = false
+string sz_ctx_t_base = size.tiny
+string sz_ctx_base = size.small
+bool show_rec = true
+bool mono_rec = false
+string sz_rec_t_base = size.tiny
+string sz_rec_base = size.normal
+bool show_qnt = true
+bool mono_qnt = false
+string sz_qnt_t_base = size.tiny
+string sz_qnt_base = size.small
+bool show_rnk = true
+bool mono_rnk = false
+string sz_rnk_t_base = size.tiny
+string sz_rnk_base = size.normal
+
+// Drivers & Sources (All Hardcoded)
+string t_us10y   = "TVC:US10Y"
+string t_dxy     = "TVC:DXY"
+string t_us500   = "FOREXCOM:SPX500"
+string t_vix     = "TVC:VIX"
+string t_us02y   = "TVC:US02Y"
+string t_de10y   = "TVC:DE10Y"
+string t_jp10y   = "TVC:JP10Y"
+string t_t10yie  = "FRED:T10YIE"
+string t_walcl   = "FRED:WALCL"
+string t_wtregen = "FRED:WTREGEN"
+string t_rrp     = "FRED:RRPONTSYD"
+string t_ecb_assets = "FRED:ECBASSETSW"
+string t_boj_assets = "FRED:JPNASSETS"
+
+string t_gold   = "FX:XAUUSD"
+string t_oil    = "TVC:USOIL"
+string t_nas    = "SKILLING:US100"
+string t_jp225  = "FX:JPN225"
+string t_jpyx   = "TVC:JXY"
+string t_btc    = "BITSTAMP:BTCUSD"
+string t_eur    = "FX:EURUSD"
+string t_gbp    = "FX:GBPUSD"
+string t_aud    = "OANDA:AUDUSD"
+string t_dax    = "FOREXCOM:GER40"
+string t_usdjpy = "FX:USDJPY"
+string t_eurjpy = "FX:EURJPY"
+string t_gbpjpy = "FX:GBPJPY"
+string t_audjpy = "FX:AUDJPY"
+
+// Logic Sensitivity
+float z_mid      = 0.5
+float z_high     = 2.0
+float vix_alert  = 30.0
+int corr_len     = 20
+
+// Rate Check
+string sym_target_new = "ECONOMICS:USINTR"
+string sym_ref_new    = "FRED:DFEDTARU"
+
+// Calculation Helper for scaling
+// Logic below (sz_* variables) relies on f_adjust_size which requires these base inputs.
+// We reconstruct the size logic here briefly because the function f_adjust_size is defined BELOW in original code.
+// BUT we are replacing the block BEFORE the function. The variable assignments (string sz_head = ...)
+// happen AFTER the function definition in the original code (lines 160+).
+// The replacement block ends at line 287.
+// We must be careful not to break the order. 
+// "sz_head" etc. utilize "f_adjust_size". "f_adjust_size" is defined at line 160.
+// If we replace lines 30-287, we are overwriting f_adjust_size definition!
+// We must INCLUDE f_adjust_size in our replacement block or ensure it's preserved.
+// Looking at file content: Line 160 is INSIDE the replacement range.
+// So we must re-define f_adjust_size inside our replacement content.
+
+// ------------------------------------------
+// Size Adjustment Function (Moved/Preserved)
+// ------------------------------------------
+f_adjust_size(_base_size, _scale) =>
+    string result = size.tiny
+    if _scale == 1
+        result := _base_size == size.large ? size.normal : _base_size == size.normal ? size.small : size.tiny
+    else if _scale == 2
+        result := _base_size == size.large ? size.normal : _base_size == size.normal ? size.small : size.tiny
+    else if _scale == 3
+        result := _base_size
+    else if _scale == 4
+        result := _base_size == size.tiny ? size.small : _base_size == size.small ? size.normal : _base_size
+    else if _scale == 5
+        result := _base_size == size.tiny ? size.small : _base_size == size.small ? size.normal : size.large
+    else if _scale == 6
+        result := _base_size == size.tiny ? size.normal : _base_size == size.small ? size.normal : size.large
+    else if _scale == 7
+        result := _base_size == size.tiny ? size.normal : size.large
+    result
+
+// Calculate final sizes based on hardcoded defaults & user scale
+string sz_head = f_adjust_size(sz_head_base, table_scale)
+string sz_sub = f_adjust_size(sz_sub_base, table_scale)
+string sz_ctx_t = f_adjust_size(sz_ctx_t_base, table_scale)
+string sz_ctx = f_adjust_size(sz_ctx_base, table_scale)
+string sz_rec_t = f_adjust_size(sz_rec_t_base, table_scale)
+string sz_rec = f_adjust_size(sz_rec_base, table_scale)
+string sz_qnt_t = f_adjust_size(sz_qnt_t_base, table_scale)
+string sz_qnt = f_adjust_size(sz_qnt_base, table_scale)
+string sz_rnk_t = f_adjust_size(sz_rnk_t_base, table_scale)
+string sz_rnk = f_adjust_size(sz_rnk_base, table_scale)
+int len_adx = 14
+int th_adx = 25
+
+
+// 🕒 Macro Trend Lookback (Mathematics for Multi-Timeframe)
+// Intraday (15m Base) -> Macro Target: 1H Chart / 5 Days
+// Swing    (60m Base) -> Macro Target: 4H Chart / 20 Days
+// NOTE: We transform "Timeframe" into "Bar Counts" to save request.security calls.
+
+
+// 1. FX/Crypto (24h Market)
+// Intraday: 5 days * 24h = 120h -> 120 * 4 (15m bars) = 480 bars
+// Swing: 20 days * 24h = 480h -> 480 / 1 (60m bars) = 480 bars
+// (Defined in Time Engine)
+
+// 2. Stocks (6.5h Market)
+// Intraday: 5 days * 6.5h = 32.5h -> 32.5 * 4 (15m bars) = 130 bars
+// Swing: 20 days * 6.5h = 130h -> 130 / 1 (60m bars) = 130 bars
+// (Defined in Time Engine)
+
+
+// Hybrid Weights
+float w_prim = 0.7
+float w_macro = 0.3
+
+
+// ==========================================
+// データ取得 & 構造体
+// ==========================================
+type Asset
+    string name
+    float chg
+    float z
+    float val
+    float abs_chg
+    bool is_bull
+    float sma200
+    float vol_ratio
+    float kurt // 🌌 Quantum Trigger Field
+    float reynolds // 🌊 Fluid Physics: Turbulence
+    float velocity // 🌊 Fluid Physics: Speed
+    bool phase_sync // 🌊 Phase Geometry: Sync Status
+
+
+// ♾️ Infinity Logic: Robust Volatility Helper (Median Absolute Deviation)
+// Prevents outliers from skewing the volatility constant (Normalizes to Gaussian equivalent)
+f_calc_robust_vol(_src, _len) =>
+    _med = ta.median(_src, _len)
+    _dev = math.abs(_src - _med)
+    _mad = ta.median(_dev, _len)
+    _mad * 1.4826 // Scale to approximate StdDev
+
+
+// 🌌 Quantum Logic: Kurtosis Helper (Fat Tail Detection)
+f_calc_kurtosis(_src, _len) =>
+    _mean = ta.sma(_src, _len)
+    _std = ta.stdev(_src, _len)
+    _kurt = 0.0
+    if _std != 0
+        _sum = 0.0
+        for i = 0 to _len - 1
+            _sum := _sum + math.pow(_src[i] - _mean, 4)
+        _kurt := (_sum / _len) / math.pow(_std, 4)
+    _kurt // Normal dist = 3.0
+
+
+// 🌊 Singularity Logic: Fluid Physics Engine (Navier-Stokes Proxy)
+f_calc_physics(_src, _vol, _len) =>
+    // Velocity: Rate of Change of Price (Momentum)
+    // 🛡️ REPLAY FIX: Ensure historical index exists
+    _vel = _src - nz(_src[_len], _src)
+    // Viscosity: Inverse of Volatility (High Vol = Low Viscosity/Support)
+    // We normalize Volatility to prevent division by zero
+    _visc = 1.0 / math.max(_vol, 0.001)
+    // Reynolds Number (Re) = Inertial Forces / Viscous Forces
+    // High Re = Turbulence (Crash/Breakout Risk). Low Re = Laminar (Stable Trend).
+    _re = math.abs(_vel) * _vol * 10.0 // Simplified: Momentum * Volatility = Energy Limit
+    [_vel, _re]
+
+
+// 🌊 Singularity Logic: Phase Engine (Hilbert Transform Proxy)
+f_calc_phase(_src, _len) =>
+    // Simple 3-pole super smoother or just RSI/Stoch alignment for Phase
+    // Here we use Instantaneous Trend sync
+    // 🛡️ REPLAY FIX: Ensure historical index exists
+    _mom = _src - nz(_src[3], _src)
+    _acc = _mom - nz(_mom[3], _mom)
+    // Phase Sync: Momentum and Acceleration are aligned and strong
+    bool _sync = (math.sign(_mom) == math.sign(_acc)) and (math.abs(_mom) > ta.stdev(_src, 20))
+    _sync
+
+
+// NOTE: Merged function to save lines and keep security calls efficient
+f_calc_hybrid(_sym, _name, _res, _lb_prim, _lb_macro) =>
+    // Determine Lookbacks based on Mode & Asset Type
+    // (Deprecated internal logic, now passed as args)
+   
+    // Dynamic Resolution for Swing Mode (Force 240 if Swing, else use default)
+    // CRITICAL OPTIMIZATION: To stay under 40 calls, we MUST bundle requests.
+    // If we change resolution per call, it counts as new call.
+    // We will stick to 'calc_res' for consistency but rely on longer lookbacks for macro.
+    // If Swing mode and calc_res is D, then lb_macro 120 is 120 days. That's fine.
+    // If Swing mode and calc_res is 240, lb_macro 120 is 120 4H bars (20 days). Perfect.
+   
+    // Tuple Fetch: [robust_vol, close, close_prim, close_macro, sma, atr_c, atr_avg]
+    // 🛡️ OPTIMIZATION: Calc Physics/Kurtosis OUTSIDE security to prevent Replay Runtime Errors
+    [d_robust_vol, c, c_prim, c_macro, sma, atr_c, atr_avg] = request.security(_sym, _res, [f_calc_robust_vol((close-close[1])/close[1]*100, 20), close, close[_lb_prim], close[_lb_macro], ta.sma(close, 200), ta.atr(14), ta.sma(ta.atr(14), 100)], lookahead=barmerge.lookahead_off)
+
+
+    // Calculate Changes (Safe Division)
+    float chg_prim = (c_prim != 0 and not na(c_prim)) ? ((c - c_prim) / c_prim) * 100 : 0
+    float chg_macro = (c_macro != 0 and not na(c_macro)) ? ((c - c_macro) / c_macro) * 100 : 0
+   
+    // Hybrid Change (Blended)
+    float _chg = (chg_prim * w_prim) + (chg_macro * w_macro)
+
+
+    // Z-Score Calculation (Safe Division with Robust Vol)
+    float period_vol = d_robust_vol * math.sqrt(_lb_prim)
+    float _z = (period_vol != 0 and not na(period_vol)) ? _chg / period_vol : 0
+    float _v_r = (atr_avg != 0 and not na(atr_avg)) ? atr_c / atr_avg : 1.0
+   
+    // 🌊 Physics & Phase Calculation (Computed in Main Context)
+    // 🛡️ REPLAY FIX: Pass explicit length to avoid variable length errors
+    float _vol_norm = d_robust_vol / (c != 0 ? c : 1.0)
+   
+    // Use NZ() again here just in case, though main context usually safer
+    [_vel_val, _re_val] = f_calc_physics(c, _vol_norm, 5)
+    bool _p_sync = f_calc_phase(c, 10)
+   
+    // 🌌 Kurtosis (computed here)
+    // We calculate % change locally to feed kurtosis
+    float _pct_chg = (c - nz(c[1], c)) / nz(c[1], c) * 100
+    float _kurt_val = f_calc_kurtosis(_pct_chg, 20)
+
+
+    [Asset.new(_name, _chg, _z, c, math.abs(_chg), c > sma, sma, _v_r, _kurt_val, _re_val, _vel_val, _p_sync)]
+
+
+// Wrapper functions for compatibility
+f_calc_fx(_sym, _name) =>
+    f_calc_hybrid(_sym, _name, calc_res, lookback_bars_fx, macro_lb_fx)
+
+
+f_calc_stock(_sym, _name) =>
+    f_calc_hybrid(_sym, _name, calc_res, lookback_bars_stock, macro_lb_stock)
+
+
+// 🛡️ Yield-Specific Wrapper
+// Reverted to 15m resolution (96 bars = 1 Day) as per user request.
+f_calc_yield(_sym, _name) =>
+    string _res = calc_res // "15" (Intraday) or "60" (Swing)
+    int _lb = mode_select == "Intraday" ? 96 : 24 // 1 Day (96x15m or 24x60m)
+    // Yield Macro matches FX Macro (24h/Global)
+    f_calc_hybrid(_sym, _name, _res, _lb, macro_lb_fx)
+
+
+// アセット名をシンプルなシンボル名に統一（絵文字 + シンボル）
+[d_us10y] = f_calc_yield(t_us10y, "🇺🇸US10Y")
+[d_dxy]   = f_calc_fx(t_dxy, "💵DXY")
+[d_us500] = f_calc_stock(t_us500, "📈SPX")
+[d_us02y] = f_calc_yield(t_us02y, "🇺🇸US02Y")
+[d_vix]   = f_calc_stock(t_vix, "😱VIX")
+
+
+// ✅ 動的閾値: VIXデータ取得後に計算
+float dynamic_z_mid = d_vix.val > 25 ? z_mid * 1.6 : (d_vix.val > 20 ? z_mid * 1.2 : z_mid)
+float dynamic_z_high = d_vix.val > 25 ? z_high * 1.25 : (d_vix.val > 20 ? z_high * 1.1 : z_high)
+
+
+// 🧪 Conditional Fetching Helper
+f_calc_dummy(_name) => [Asset.new(_name, 0, 0, 0, 0, false, 0, 1, 0, 0, 0, false)]
+
+
+// � Wrapper for Conditional Execution (Fixes tuple assignment error)
+//  Wrapper for Conditional Execution (Standard)
+f_calc_cond(_need, _sym, _name, _is_fx) =>
+    if _need
+        if _is_fx
+            f_calc_fx(_sym, _name)
+        else
+            f_calc_stock(_sym, _name)
+    else
+        f_calc_dummy(_name)
+
+
+// 🛡️ Wrapper for Conditional Yields
+f_calc_cond_yield(_need, _sym, _name) =>
+    if _need
+        f_calc_yield(_sym, _name)
+    else
+        f_calc_dummy(_name)
+
+
+// �🔍 Dependency Logic (Dynamic Fetching)
+bool need_de = en_eu or en_ej or en_dax // Used for EUR pairs & DAX
+bool need_gb = en_gu or en_gj // Used for GBP pairs
+bool need_au = en_au or en_aj // Used for AUD pairs
+bool need_jp = en_uj or en_ej or en_gj or en_aj or en_jpn // Used for JPY pairs & Nikkei
+
+
+[d_de10y] = f_calc_cond_yield(need_de, t_de10y, "🇩🇪DE10Y")
+[d_gb10y] = f_calc_dummy("🇬🇧GB10Y") // (Removed)
+[d_au10y] = f_calc_dummy("🇦🇺AU10Y") // (Removed)
+[d_jp10y] = f_calc_cond_yield(need_jp, t_jp10y, "🇯🇵JP10Y")
+[d_gold]  = f_calc_fx(t_gold, "🥇XAU")
+[d_oil]   = f_calc_fx(t_oil, "🛢️OIL")
+[d_nas]   = f_calc_stock(t_nas, "💻NAS")
+[d_jp225] = f_calc_stock(t_jp225, "🇯🇵NK225")
+[d_btc]   = f_calc_fx(t_btc, "₿BTC")
+[d_eur]   = f_calc_fx(t_eur, "🇪🇺EURUSD")
+[d_gbp]   = f_calc_fx(t_gbp, "🇬🇧GBPUSD")
+[d_aud]   = f_calc_fx(t_aud, "🇦🇺AUDUSD")
+[d_uj]    = f_calc_fx(t_usdjpy, "🇯🇵USDJPY")
+[d_jpyx]  = f_calc_fx(t_jpyx, "💴JXY")
+
+
+// ✂️ クロス円のデータ取得（request.security）は削除またはコメントアウト
+// [d_ej] = f_calc_fx(t_eurjpy, "🇪🇺EURJPY") ... 不要
+// [d_gj] = f_calc_fx(t_gbpjpy, "🇬🇧GBPJPY") ... 不要
+// [d_aj] = f_calc_fx(t_audjpy, "🇦🇺AUDJPY") ... 不要
+
+
+// 🧮 合成レート（Synthetic Prices）の計算
+// 取得済みのドルストレートとドル円を掛け合わせるだけなので、通信回数はゼロです
+float val_ej = d_eur.val * d_uj.val
+float val_gj = d_gbp.val * d_uj.val
+float val_aj = d_aud.val * d_uj.val
+
+
+// ※ ランキング表示用のダミーオブジェクト（エラー回避用）
+// テクニカル分析（SMAやVol）は持たせず、価格だけ入れたダミーを作ります
+Asset d_ej = Asset.new("🇪🇺EURJPY", 0, 0, val_ej, 0, true, val_ej, 1.0, 3.0, 0, 0, false)
+Asset d_gj = Asset.new("🇬🇧GBPJPY", 0, 0, val_gj, 0, true, val_gj, 1.0, 3.0, 0, 0, false)
+Asset d_aj = Asset.new("🇦🇺AUDJPY", 0, 0, val_aj, 0, true, val_aj, 1.0, 3.0, 0, 0, false)
+
+
+[d_dax]   = f_calc_cond(need_de, t_dax, "🇩🇪DAX", false)
+
+
+// 🗑️ Removed Assets (Dummy Placeholders for safety)
+[d_silver] = f_calc_dummy("🥈XAG")
+[d_chf] = f_calc_dummy("🇨🇭USDCHF")
+[d_cad] = f_calc_dummy("🇨🇦USDCAD")
+
+
+s_spx = request.security(t_us500, "D", close, lookahead=barmerge.lookahead_off)
+s_us10y = request.security(t_us10y, "D", close, lookahead=barmerge.lookahead_off)
+// (s_nas removed as unused)
+float corr_spx_yield = ta.correlation(s_spx, s_us10y, corr_len)
+
+
+// -------------------------------------------------------------------------
+// 📉 Hurst Exponent (Market Health Proxy)
+// -------------------------------------------------------------------------
+// SPXの日足データ(s_spx)を使用して、市場の長期記憶性（トレンドの持続力）を測定
+// H > 0.5: トレンド相場（健全） / H < 0.5: 平均回帰・レンジ（ノイズ過多）
+int h_len = 50 // 計算期間
+float h_range = ta.highest(s_spx, h_len) - ta.lowest(s_spx, h_len)
+float h_std = ta.stdev(s_spx, h_len)
+// 簡易Rescaled Range法によるハースト指数推定
+float hurst_val = (h_std != 0) ? math.log(h_range / h_std) / math.log(h_len) : 0.5
+
+// 🌊 Adaptive Thresholds (Hurst)
+// Hが「普段より高いか低いか」を判定（固定値 0.55 廃止）
+float h_sma = ta.sma(hurst_val, 100)
+float h_std_dev = ta.stdev(hurst_val, 100)
+bool h_high = hurst_val > (h_sma + h_std_dev) // トレンド性 強
+bool h_low  = hurst_val < (h_sma - h_std_dev) // ランダム性 強
+
+
+// (Macro Monthly Data removed for optimization)
+
+
+// ==========================================
+// 🏦 Global Macro Calculations (Module 1: Global Net Liquidity - Ex China)
+// ==========================================
+// 既存の米国データ取得
+float v_t10yie  = request.security(t_t10yie, "D", close, lookahead=barmerge.lookahead_off)
+float v_walcl   = request.security(t_walcl, "D", close, lookahead=barmerge.lookahead_off)
+float v_wtregen = request.security(t_wtregen, "D", close, lookahead=barmerge.lookahead_off)
+float v_rrp     = request.security(t_rrp, "D", close, lookahead=barmerge.lookahead_off)
+
+
+// 🆕 Rate Check Data Acquisition (Removed)
+
+
+// 🆕 Simple Rate Check Data Fetching
+// "gaps=barmerge.gaps_off を使うだけで自動で穴埋め" (指定ロジック)
+val_target_new = request.security(sym_target_new, "D", close, gaps=barmerge.gaps_off, lookahead=barmerge.lookahead_on)
+val_ref_new    = request.security(sym_ref_new,    "D", close, gaps=barmerge.gaps_off, lookahead=barmerge.lookahead_on)
+float val_ref_3m = request.security(sym_ref_new, "D", close[66], gaps=barmerge.gaps_off, lookahead=barmerge.lookahead_on) // Approx 3 months
+
+
+// 新規: 世界の中央銀行データ取得（中国を除外）+ タイムスタンプ取得でお鮮度管理
+[v_ecb, t_ecb] = request.security(t_ecb_assets, "D", [close, time], lookahead=barmerge.lookahead_off)
+[v_boj, t_boj] = request.security(t_boj_assets, "D", [close, time], lookahead=barmerge.lookahead_off)
+
+// 📉 Data Freshness Decay Function
+// データが古いほど「1.0 -> 0.0」に減衰する係数を返す
+f_calc_freshness(_t_data) =>
+    int _days_old = (timenow - _t_data) / 86400000 // ms to days
+    // 7日以内なら1.0 (新鮮)、30日経過で0に減衰
+    float _decay = _days_old < 7 ? 1.0 : (_days_old > 30 ? 0.0 : 1.0 - ((_days_old - 7.0) / 23.0))
+    math.max(0.0, _decay)
+
+float fresh_ecb = f_calc_freshness(t_ecb)
+float fresh_boj = f_calc_freshness(t_boj)
+
+
+
+
+
+
+// 🌌 Module 5: Market Coherence Map (Systemic Risk Radar)
+// Calculate pair-wise correlations between 4 Pillars: SPX, US10Y(Yield), DXY, Gold
+// This is a lightweight proxy for PCA (Principal Component Analysis)
+// High Coherence (>0.7) = Systemic Event (Everything moves together -> Cash is King)
+// Low Coherence (<0.3) = Stock Pickers Market
+float corr_s_y = math.abs(ta.correlation(d_us500.z, d_us10y.z, 20))
+float corr_s_d = math.abs(ta.correlation(d_us500.z, d_dxy.z, 20))
+float corr_s_g = math.abs(ta.correlation(d_us500.z, d_gold.z, 20))
+float corr_y_d = math.abs(ta.correlation(d_us10y.z, d_dxy.z, 20))
+float coherence_val = (corr_s_y + corr_s_d + corr_s_g + corr_y_d) / 4.0
+
+
+// Coherence Regimes
+bool is_sys_risk = coherence_val > 0.70 // 70% Alert
+bool is_crash_risk = coherence_val > 0.90 // 90% Cash Out
+bool is_coherent_trend = coherence_val > 0.4 and coherence_val <= 0.7
+
+
+// 🌌 Module 4: Hybrid Entropy Weighting (The Brain)
+// Compare Volatility (Information Flow) of Rates vs Liquidity
+float vol_rate = f_calc_robust_vol(d_us10y.val, 20) / ta.sma(d_us10y.val, 20) // Normalized Vol
+float vol_liq  = f_calc_robust_vol(d_us500.val, 20) / ta.sma(d_us500.val, 20)
+float entropy_bias = 0.0
+// If Rate Vol is 2x Liquidity Vol -> Rate Driven
+if vol_rate > (vol_liq * 2.0)
+    entropy_bias := 1.0 // Shift to Rates
+else if vol_liq > (vol_rate * 2.0)
+    entropy_bias := -1.0 // Shift to Liquidity
+
+
+// 1. 米国ネット流動性（既存ロジック）
+float raw_us_liq = v_walcl - (v_wtregen * 1000) - (v_rrp * 1000)
+
+
+// 2. 各国の正規化（Zスコア化）関数
+f_calc_z(_src, _len) =>
+    float _chg = _src - _src[5] // 1週間（5営業日）の変化量
+    float _std = ta.stdev(_chg, _len)
+    _std != 0 ? _chg / _std : 0
+
+
+// 3. 各要素のZスコア算出（期間: 50日）
+float z_us  = f_calc_z(raw_us_liq, 50)
+float z_ecb = f_calc_z(v_ecb, 50)
+float z_boj = f_calc_z(v_boj, 50)
+
+
+// 4. グローバル流動性スコアの統合 (Global_Liq_Score)
+// 🚀 データ鮮度による動的加重平均 (Freshness Weighted Average)
+// ECB/BoJのデータが古い場合、その影響度を下げ、相対的にUSデータ(常に新鮮)の比重を高める
+float w_total = 0.50 + (0.25 * fresh_ecb) + (0.25 * fresh_boj)
+float Global_Liq_Score = ((z_us * 0.50) + (z_ecb * 0.25 * fresh_ecb) + (z_boj * 0.25 * fresh_boj)) / w_total
+
+
+// 既存変数へのマッピング
+float liq_z = Global_Liq_Score
+
+
+// 実質金利の計算（既存維持）
+float val_real_yield = d_us10y.val - v_t10yie
+float ry_z_raw = ta.stdev(val_real_yield - val_real_yield[5], 50)
+float ry_z = ry_z_raw != 0 ? (val_real_yield - val_real_yield[5]) / ry_z_raw : 0
+
+
+// ==========================================
+// 🧠 FRB Cycle & Adaptive Weights (Module 2: Cycle & kNN-like)
+// ==========================================
+
+
+// 1. データ取得（FFレート & SPXの日足高安: ADX計算用）
+
+
+// -------------------------------------------------------------------------
+// 🏦 FRB Rate Logic Removed
+// -------------------------------------------------------------------------
+
+
+// SPXデータの取得（ここは変更なし）
+[spx_h, spx_l, spx_c] = request.security("FOREXCOM:SPX500", "D", [high, low, close], lookahead=barmerge.lookahead_off)
+// d_us02y.val は現在の2年債利回り
+// 🔄 Module 2: FRB Cycle Integration (Restored)
+// Using logic from Simple Rate Check (spread_new inferred here for global scope)
+float _spread_global = d_us02y.val - val_ref_new
+bool is_hiking_cycle  = _spread_global > 0.25  // Hike Expectation
+bool is_cutting_cycle = _spread_global < -0.25 // Cut Expectation
+bool is_neutral_cycle = not is_hiking_cycle and not is_cutting_cycle
+
+
+// 3. 市場環境の測定 (SPXに基づくADXとATR)
+// 既存の関数がないため、ここで簡易計算（関数化も可能だがインライン展開で軽量化）
+// True Range
+float _tr = math.max(math.max(spx_h - spx_l, math.abs(spx_h - spx_c[1])), math.abs(spx_l - spx_c[1]))
+// ATR (Smooth)
+float _atr = ta.rma(_tr, 14)
+float _atr_avg = ta.sma(_atr, 100)
+bool is_high_vol = _atr > (_atr_avg * 1.2) // 平均より20%以上ボラが高い
+
+
+// ADX (Directional Movement)
+float _up = spx_h - spx_h[1]
+float _dn = spx_l[1] - spx_l
+float _plus = (_up > _dn and _up > 0) ? _up : 0
+float _minus = (_dn > _up and _dn > 0) ? _dn : 0
+float _s_plus = ta.rma(_plus, len_adx)
+float _s_minus = ta.rma(_minus, len_adx)
+float _s_tr = ta.rma(_tr, len_adx)
+float _di_plus = _s_tr != 0 ? 100 * _s_plus / _s_tr : 0
+float _di_minus = _s_tr != 0 ? 100 * _s_minus / _s_tr : 0
+float _dx = (_di_plus + _di_minus > 0) ? 100 * math.abs(_di_plus - _di_minus) / (_di_plus + _di_minus) : 0
+float _adx = ta.rma(_dx, len_adx)
+bool is_strong_trend = _adx > th_adx
+
+
+// 4. 適応型ウェイト (Adaptive Weights) - 🚀 Hybrid Entropy Upgrade
+// Base Rule (Module 2)
+float w_liq_base  = (is_high_vol or is_strong_trend) ? 0.8 : 0.3
+float w_rate_base = (is_high_vol or is_strong_trend) ? 0.2 : 0.7
+
+
+// Hybrid Mixing: Base (70%) + Entropy (30% Override)
+// If entropy_bias is extreme, we shift weights dynamically
+w_liq  = w_liq_base
+w_rate = w_rate_base
+
+
+if entropy_bias > 0.5 // Rates are moving wildly
+    w_rate := math.max(w_rate, 0.8) // Force High Rate Weight
+    w_liq  := 1.0 - w_rate
+else if entropy_bias < -0.5 // Liquidity/Equity is wild
+    w_liq  := math.max(w_liq, 0.8)
+    w_rate := 1.0 - w_liq
+
+
+// サイクルの状態をコンテキスト用に保存
+// 🔄 Cycle Message Restored
+string cycle_msg = is_hiking_cycle ? "🦅 Hike Cycle" : is_cutting_cycle ? "🕊️ Cut Cycle" : "⚖️ Neutral"
+
+
+
+
+bool core_data_ok = not na(d_vix.val) and not na(d_us500.val) and not na(d_dxy.val) and not na(d_us10y.val)
+bool is_weekend = (dayofweek == dayofweek.saturday or dayofweek == dayofweek.sunday)
+bool data_alert = not core_data_ok and not is_weekend
+
+
+var list = array.new<Asset>(0)
+array.clear(list)
+array.push(list, d_us10y), array.push(list, d_dxy), array.push(list, d_vix)
+array.push(list, d_gold), array.push(list, d_oil), array.push(list, d_btc)
+array.push(list, d_us500), array.push(list, d_nas), array.push(list, d_jp225)
+array.push(list, d_us02y), array.push(list, d_de10y)
+// (GB10Y, AU10Y removed from candidates)
+array.push(list, d_jp10y), array.push(list, d_jpyx)
+// 🚀 ASSET LIST GENERATION (Stabilized)
+// Calculate only on confirmed bars (Close) to prevent flickering
+if barstate.isconfirmed
+    array.clear(list)
+    array.push(list, d_us10y), array.push(list, d_dxy), array.push(list, d_vix)
+    array.push(list, d_gold), array.push(list, d_oil), array.push(list, d_btc)
+    array.push(list, d_us500), array.push(list, d_nas), array.push(list, d_jp225)
+    array.push(list, d_us02y), array.push(list, d_de10y)
+    // (GB10Y, AU10Y removed from candidates)
+    array.push(list, d_jp10y), array.push(list, d_jpyx)
+    array.push(list, d_dax)
+
+    int n = array.size(list)
+    if n > 1
+        for i = 0 to n - 2
+            int max_idx = i
+            for j = i + 1 to n - 1
+                if array.get(list, j).abs_chg > array.get(list, max_idx).abs_chg
+                    max_idx := j
+            if max_idx != i
+                Asset temp = array.get(list, i)
+                array.set(list, i, array.get(list, max_idx))
+                array.set(list, max_idx, temp)
+// 🟢 【修正1】 ここに以下のコードを挿入（スコアリングの直前）
+// -------------------------------------------------------------------------
+// 🚨 エラー修正: スコアリングに必要な変数をここで先に定義
+// -------------------------------------------------------------------------
+// ✅ 疑似ML: 相関ベースの動的ウェイト
+float corr_yield_dxy = ta.ema(ta.correlation(d_us10y.z, d_dxy.z, 50), 10)
+bool strong_correlation = math.abs(corr_yield_dxy) > 0.6
+
+
+// 以前のロジックで使われていた yield_weight を、Module 2の w_rate で代用定義
+float yield_weight = w_rate
+
+
+// フラグ定義 (スコアリングで使うため上に移動)
+bool rising_unemp = false
+bool falling_conf = false
+bool high_inflation = false  // 👈 この行を追加！
+
+
+// パニック判定 (panic_mode) もここで定義
+// 🔄 Module 3: VIX Percentile & Dynamic Risk
+float vix_rank = ta.percentrank(d_vix.val, 252 * 2) // Past 2 Years Percentile
+bool is_panic_rank = vix_rank > 95
+bool panic_mode = d_vix.val > vix_alert or d_vix.z > dynamic_z_high or is_panic_rank
+bool jpy_crash  = d_jpyx.z < -dynamic_z_high
+
+
+// 🔄 Module 3: Correlation Flipping (Physics)
+// 株と金利の相関によるレジーム判定
+bool yield_is_bad = corr_spx_yield < -0.3 // 金利上昇 = 株安 (インフレ懸念)
+bool yield_is_good = corr_spx_yield > 0.3 // 金利上昇 = 株高 (景気回復)
+
+
+// トレンド・方向性フラグ
+bool y_up = d_us10y.z > dynamic_z_mid, y_dn = d_us10y.z < -dynamic_z_mid
+bool d_up = d_dxy.z > dynamic_z_mid, d_dn = d_dxy.z < -dynamic_z_mid
+bool s_up = d_us500.z > dynamic_z_mid, s_dn = d_us500.z < -dynamic_z_mid
+bool g_up = d_gold.z > dynamic_z_mid, g_dn = d_gold.z < -dynamic_z_mid
+bool b_up = d_btc.z > dynamic_z_mid, b_dn = d_btc.z < -dynamic_z_mid
+bool o_up = d_oil.z > dynamic_z_mid
+bool j_up = d_jpyx.z > dynamic_z_mid
+bool j_dn = d_jpyx.z < -dynamic_z_mid
+// -------------------------------------------------------------------------
+// ==========================================
+// スコアリング
+// ==========================================
+float f_risk = 0.0
+f_risk := f_risk + (d_us500.z > 0.3 ? 1 : d_us500.z < -0.3 ? -1 : 0)
+f_risk := f_risk + (d_vix.z < -0.5 ? 1 : d_vix.z > 0.5 ? -1 : 0)
+f_risk := f_risk + (d_btc.z > 0.5 ? 0.5 : d_btc.z < -0.5 ? -0.5 : 0)
+f_risk := f_risk + (d_gold.z < -0.5 ? 0.5 : d_gold.z > 0.5 ? -0.5 : 0)
+// 🔄 Module 3: Fractal Confluence (Filtering) (Infinity Logic)
+// Hurst指数によるスコア調整（適応型閾値に変更）
+float fractal_mult = h_high ? 1.2 : (h_low ? 0.8 : 1.0)
+
+// 🌊 Adaptive Thresholds (Reynolds - Turbulence)
+// レイノルズ数(乱流)の適応型閾値
+float re_src = d_us500.reynolds // 代表としてSPXの乱流度を使用
+float re_sma = ta.sma(re_src, 50)
+float re_std = ta.stdev(re_src, 50)
+bool is_turbulent = re_src > (re_sma + re_std) // 平常時より乱流度が突出している
+
+// ⚡ Fast Veto Trigger (Short-term Volatility)
+// US02Y(政策金利感応度)が日中に2σ以上動いたら、マクロ判断を一時停止（要人発言等のノイズ回避）
+float us02y_change = math.abs(d_us02y.val - d_us02y.val[1])
+float us02y_vol = ta.stdev(d_us02y.val - d_us02y.val[1], 20)
+bool veto_fast = us02y_change > (us02y_vol * 3.0) // 3シグマ級の突発変動
+
+
+// スコアループ内での適用
+if rising_unemp
+    f_risk := f_risk - 1.5
+
+
+// 🌍 Macro Regimes (New Engine)
+// Goldilocks: Growth + Liquidity + Stable Yields (Ideal for Stocks)
+bool reg_goldilocks = (d_us500.is_bull or d_us500.z > 0) and liq_z > -0.5 and ry_z < 1.0 and d_vix.val < 20
+// Reflation: Growth + Yields Up + Commodities Up (Inflationary Growth)
+bool reg_reflation = d_us500.z > 0 and d_us10y.z > 0.5 and d_oil.z > 0.5
+// Stagflation: Yields Up + Commodities Up + Stocks Down (Bad Inflation)
+bool reg_stagflation = d_us10y.z > 0.5 and d_oil.z > 0.5 and d_us500.z < -0.5
+// Liquidity Crisis: Net Liq Crashing + VIX Spiking (Cash is King)
+bool reg_liq_crisis = liq_z < -1.5 and d_vix.val > 25
+// Deflation: Yields Down + Oil Down + Stocks Down
+// Deflation: Yields Down + Oil Down + Stocks Down
+bool reg_deflation = d_us10y.z < -1.0 and d_oil.z < -1.0 and d_us500.z < -0.5
+
+
+// ==========================================
+// 🌊 Driver Derivatives & Adaptive Scoring (Module 3: Integration)
+// ==========================================
+
+
+// 1. イールドカーブ・実質金利レジーム (既存ロジックの整理)
+float yield_curve = d_us10y.val - d_us02y.val
+bool curve_inverted = yield_curve < -0.2
+bool curve_steep    = yield_curve > 0.8
+bool real_rate_clamped = ry_z > 2.0 // 実質金利が高すぎて株/Goldが死ぬレベル
+
+
+// 2. 適応型スコアリング・エンジン
+// モジュール2で算出した w_rate (金利重視度) と w_liq (流動性重視度) を適用
+
+
+// 💵 USD Score:
+// 利上げサイクル(Hiking)なら金利感応度を上げ、利下げサイクルなら経済指標(DXY自体)を重視
+float weight_us_yield = is_hiking_cycle ? 1.2 : 0.8
+float s_usd = d_dxy.z + (d_us10y.z * w_rate * weight_us_yield)
+
+
+// 💴 JPY Score:
+// 従来: 単純な金利差
+// 新版: リスクオフ時(VIX高)の円買い圧力 + 日銀流動性(z_boj)のサポートを加味
+// w_liqが高い(荒れ相場)時は、金利差よりも「恐怖による円買い」が優先される設計
+float risk_premium_jpy = (d_vix.z > 0.5 ? 0.8 : 0) + (panic_mode ? 1.5 : 0)
+float s_jpy = d_jpyx.z + risk_premium_jpy - (d_us10y.z * w_rate) + (z_boj * 0.3)
+
+
+// 💶 EUR Score:
+// 欧州流動性(z_ecb)とドイツ金利を加味
+float s_eur = d_eur.z + (d_de10y.z * w_rate * 0.8) + (z_ecb * 0.2)
+
+
+// 💷 GBP Score (Enhanced Proxy):
+// SPX(リスクセンチメント)との連動性が高い通貨
+float s_gbp = d_gbp.z + (d_us500.z * 0.4) + (s_eur * 0.4) + (f_risk > 0 ? 0.3 : 0)
+
+
+// 🇦🇺 AUD Score (Resource & China Proxy):
+// 従来のGold/Oilに加え、モジュール1で計算可能な「中国/グローバル流動性」を加味するが
+// ここではシンプルにベースのGlobal_Liq_Score(liq_z)を資源需要として加算
+float s_aud = d_aud.z + (d_gold.z * 0.3) + (d_oil.z * 0.3) + (liq_z * 0.3)
+
+
+// 🥇 GOLD Score (Safe Haven vs Real Rates):
+// 最も劇的に変わる部分。
+// 「金利が上がっても、流動性がジャブジャブならGoldは下がらない」現象を再現。
+// w_rateが高い(平時) → 実質金利(ry_z)に逆相関して動く
+// w_liqが高い(混乱時) → 流動性(liq_z)と恐怖(VIX)に反応して上がる
+float s_xau = d_gold.z + (liq_z * w_liq * 1.5) - (ry_z * w_rate * 1.5) + (d_vix.z > 1.0 ? 1.0 : 0)
+
+
+// ₿ BITCOIN Score (Pure Liquidity Play):
+// ビットコインは「実質金利」と「流動性」のレバレッジプレイ
+// w_liq(流動性ウェイト)を2倍適用。金利上昇(Hiking)には弱い。
+float s_btc = d_btc.z + (liq_z * w_liq * 2.0) - (ry_z * w_rate * 1.2) + (d_nas.z * 0.5)
+
+
+// (CHF, CAD removed)
+
+
+// 📊 Asset Scenarios (A/B Logic)
+
+
+// USDJPY: Scenario A (Yield Diff) vs B (Risk Off)
+float sc_uj_a = (d_us10y.z - d_jp10y.z) * (reg_goldilocks ? 1.2 : 1.0) // Yield Drive
+float sc_uj_b = (reg_liq_crisis or d_vix.z > 2.0) ? -4.0 : 0 // Panic Repatriation
+float sc_usdjpy = en_uj ? (s_usd - s_jpy) + sc_uj_a + sc_uj_b : 0
+
+
+// EURUSD: Scenario A (Policy Div) vs B (Global Growth)
+float sc_eu_a = (d_de10y.z - d_us10y.z) * yield_weight
+float sc_eu_b = reg_goldilocks ? 0.5 : (reg_liq_crisis ? -0.5 : 0) // Growth seeks Euro
+float sc_eurusd = en_eu ? (s_eur - s_usd) + sc_eu_a + sc_eu_b : 0
+
+
+// GBPUSD: Scenario A (Growth Prem) vs B (Fiscal Risk)
+// Enhanced: Uses SPX as growth proxy since GB10Y is gone
+float sc_gu_a = (d_us500.z > 0.5 and d_us500.is_bull) ? 1.0 : 0
+float sc_gu_b = (d_us500.z < -1.0) ? -1.0 : 0 // Risk Off hits Cable hard
+float sc_gbpusd = en_gu ? (s_gbp - s_usd) + sc_gu_a + sc_gu_b : 0
+
+
+// AUDUSD: Scenario A (Commodities) vs B (China/Asia)
+// Enhanced: Link to Gold & Oil explicitly
+float sc_au_a = (d_oil.z * 0.5) + (d_gold.z * 0.5) // Commodity Supercycle
+float sc_au_b = (d_jp225.z < -1.0) ? -0.8 : 0 // Asia weakness
+float sc_audusd = en_au ? (s_aud - s_usd) + sc_au_a + sc_au_b : 0
+
+
+// (USDCHF scenario removed)
+float sc_usdchf = 0
+
+
+// (USDCAD scenario removed)
+float sc_usdcad = 0
+
+
+// CROSS YEN: Scenario A (Carry) vs B (Bubble Burst)
+// Carry Trade thrives in Goldilocks/Reflation, dies in Crisis/Vike Spike
+float carry_env = (reg_goldilocks or reg_reflation) ? 1.0 : 0
+float burst_env = (reg_liq_crisis or d_vix.z > 2.0 or d_jpyx.z > 2.0) ? -4.0 : 0
+float sc_eurjpy = en_ej ? (s_eur - s_jpy) + carry_env + burst_env : 0
+float sc_gbpjpy = en_gj ? (s_gbp - s_jpy) + carry_env + burst_env : 0
+float sc_audjpy = en_aj ? (s_aud - s_jpy) + carry_env + burst_env : 0
+
+
+// COMMODITIES: Gold & Oil
+// Gold: Hates Real Rates, Loves Liquidity & Fear
+float sc_xau_a = (liq_z * 0.8) + (ry_z * -1.2) // Primary Drivers
+float sc_xau_b = (d_vix.z > 1.5) ? 1.0 : 0 // Safe Haven
+float sc_xauusd = en_xau ? d_gold.z + sc_xau_a + sc_xau_b : 0
+
+
+// Oil: Growth (SPX) vs Dollar (DXY)
+float sc_oil_a = (d_us500.z > 0.5) ? 0.8 : (d_us500.z < -1.0) ? -1.0 : 0 // Demand
+float sc_oil_b = (d_dxy.z > 1.0) ? -0.5 : 0 // Dollar Headwind
+float sc_oil = en_oil ? d_oil.z + sc_oil_a + sc_oil_b : 0
+
+
+// CRYPTO & BONDS
+// BTC: Pure Liquidity Sponge
+float sc_btc_a = (liq_z * 2.5) + (ry_z * -1.0) // Liquidity/Rates
+float sc_btc_b = (d_nas.z > 0.5) ? 0.8 : 0 // Tech Beta
+float sc_btc = en_btc ? d_btc.z + sc_btc_a + sc_btc_b : 0
+
+
+// INDICES: NAS100 (Liquidity Sensitive) & SPX500 (Broad Market)
+// NAS: Heavily impacted by Real Rates (Valuation) and Net Liquidity
+float sc_nas_a = (liq_z * 1.5) + (ry_z * -1.2)
+float sc_nas_b = (d_us02y.z > 1.0) ? -1.0 : (d_us02y.z < -0.5) ? 0.5 : 0 // Rate Cut hopes
+float sc_nas = en_nas ? d_nas.z + sc_nas_a + sc_nas_b : 0
+
+
+// SPX: Economic Health vs Fed tightening
+float sc_spx_a = (d_us500.is_bull and not curve_inverted) ? 0.6 : 0 // Healthy Growth
+float sc_spx_b = (d_vix.z < -0.5) ? 0.4 : (d_vix.z > 1.5) ? -1.2 : 0 // Volatility Penalty
+float sc_spx = en_spx ? d_us500.z + sc_spx_a + sc_spx_b : 0
+
+
+// JP225: Global Beta + Currency Impact
+float sc_jp225 = en_jpn ? d_jp225.z + (d_uj.z * 0.4) + (sc_spx > 0 ? 0.4 : 0) : 0
+
+
+// DAX: Euro Weakness (Export) + Global Beta
+float sc_dax_a = (s_eur < -0.5) ? 0.5 : 0 // Weak Euro helps German exports
+float sc_dax_b = (d_us500.z * 0.5) // Correlation to US Stocks
+float sc_dax = en_dax ? d_dax.z + sc_dax_a + sc_dax_b : 0
+
+
+// US02Y: Fed Policy Proxy (Tradeable)
+float sc_us02y = en_us02y ? d_us02y.z + (high_inflation ? 1.0 : 0) : 0
+
+
+// (Duplicate Commodities/Crypto block removed)
+
+
+float ema_gold = ta.ema(d_gold.z, z_smooth_len)
+// (Silver, CHF, CAD EMAs removed)
+float ema_uj = ta.ema(d_uj.z, z_smooth_len)
+float ema_eur = ta.ema(d_eur.z, z_smooth_len)
+float ema_gbp = ta.ema(d_gbp.z, z_smooth_len)
+float ema_aud = ta.ema(d_aud.z, z_smooth_len)
+float ema_btc = ta.ema(d_btc.z, z_smooth_len)
+float ema_jp225 = ta.ema(d_jp225.z, z_smooth_len)
+float ema_nas = ta.ema(d_nas.z, z_smooth_len)
+float ema_spx = ta.ema(d_us500.z, z_smooth_len)
+float ema_dax = ta.ema(d_dax.z, z_smooth_len)
+float ema_us02y = ta.ema(d_us02y.z, z_smooth_len)
+float ema_oil = ta.ema(d_oil.z, z_smooth_len)
+float ema_ej = ta.ema(d_ej.z, z_smooth_len)
+float ema_gj = ta.ema(d_gj.z, z_smooth_len)
+float ema_aj = ta.ema(d_aj.z, z_smooth_len)
+
+
+type TradePair
+    string name
+    float score
+
+
+var candidates = array.new<TradePair>(0)
+var list_long = array.new<TradePair>(0)
+var list_short = array.new<TradePair>(0)
+
+
+f_add(_arr, _nm, _sc, _en, _z_val, _price, _sma, _v_ratio, _fractal_mult, _kurt, _phase_sync) =>
+    float final_sc = _sc
+    string display_nm = _nm
+    float kairitsu = ((_price - _sma) / _sma) * 100
+    bool is_squeeze = _v_ratio < 0.8
+    bool is_expand = _v_ratio > 1.5
+    bool is_fat_tail = _kurt > 6.0 // 🌌 Quantum Trigger (Fat Tail)
+   
+    float vol_adjustment = 1.0
+    if _v_ratio < 0.6
+        vol_adjustment := 1.15
+    else if _v_ratio < 0.8
+        vol_adjustment := 1.08
+    else if _v_ratio > 2.0
+        vol_adjustment := 0.65
+    else if _v_ratio > 1.5
+        vol_adjustment := 0.82
+    else if _v_ratio > 1.2
+        vol_adjustment := 0.93
+   
+    float position_adjustment = 0.0
+    if math.abs(kairitsu) > 10
+        position_adjustment := -0.15
+    else if math.abs(kairitsu) > 7
+        position_adjustment := -0.09
+    else if math.abs(kairitsu) > 5
+        position_adjustment := -0.05
+    else if math.abs(kairitsu) > 3
+        position_adjustment := -0.02
+    else if math.abs(kairitsu) < 1
+        position_adjustment := 0.07
+   
+    float z_adjustment = 0.0
+    if math.abs(_z_val) > 3.0
+        z_adjustment := -0.12
+    else if math.abs(_z_val) > 2.5
+        z_adjustment := -0.06
+    else if math.abs(_z_val) > 2.0
+        z_adjustment := -0.03
+    else if math.abs(_z_val) < 0.5
+        z_adjustment := 0.04
+   
+    // 🚀 Infinity Update: Apply Fractal Multiplier to Final Score
+    final_sc := ((_sc * vol_adjustment) + position_adjustment + z_adjustment) * _fractal_mult
+   
+    if math.abs(_z_val) >= 3.5 or is_expand
+        display_nm := "⚠️" + _nm + " (" + str.tostring(kairitsu, "#.1") + "%)"
+    else if _phase_sync // 🌊 Phase Sync Override
+        display_nm := "🌊" + _nm
+    else if is_fat_tail and (math.sign(_sc) == math.sign(_z_val))
+        display_nm := "⚡" + _nm // Quantum Entry Trigger
+    else if (math.abs(_z_val) <= 1.2 and is_squeeze) or (math.abs(_sc) >= sc_threshold and is_squeeze)
+        display_nm := "💣" + _nm
+    else if math.abs(_z_val) <= 1.5
+        display_nm := "🚀" + _nm
+    else
+        display_nm := "📈" + _nm
+    if _en and math.abs(_sc) >= sc_threshold
+        array.push(_arr, TradePair.new(display_nm, final_sc))
+
+
+f_populate_candidates() =>
+    f_add(candidates, "XAUUSD", sc_xauusd, en_xau, ema_gold, d_gold.val, d_gold.sma200, d_gold.vol_ratio, fractal_mult, d_gold.kurt, d_gold.phase_sync)
+// (XAGUSD removed from candidates)
+    f_add(candidates, "USDJPY", sc_usdjpy, en_uj, ema_uj, d_uj.val, d_uj.sma200, d_uj.vol_ratio, fractal_mult, d_uj.kurt, d_uj.phase_sync)
+    f_add(candidates, "EURUSD", sc_eurusd, en_eu, ema_eur, d_eur.val, d_eur.sma200, d_eur.vol_ratio, fractal_mult, d_eur.kurt, d_eur.phase_sync)
+    f_add(candidates, "GBPUSD", sc_gbpusd, en_gu, ema_gbp, d_gbp.val, d_gbp.sma200, d_gbp.vol_ratio, fractal_mult, d_gbp.kurt, d_gbp.phase_sync)
+    f_add(candidates, "AUDUSD", sc_audusd, en_au, ema_aud, d_aud.val, d_aud.sma200, d_aud.vol_ratio, fractal_mult, d_aud.kurt, d_aud.phase_sync)
+// (USDCHF, USDCAD removed from candidates)
+    f_add(candidates, "BTCUSD", sc_btc, en_btc, ema_btc, d_btc.val, d_btc.sma200, d_btc.vol_ratio, fractal_mult, d_btc.kurt, d_btc.phase_sync)
+    f_add(candidates, "JP225", sc_jp225, en_jpn, ema_jp225, d_jp225.val, d_jp225.sma200, d_jp225.vol_ratio, fractal_mult, d_jp225.kurt, d_jp225.phase_sync)
+    f_add(candidates, "NAS100", sc_nas, en_nas, ema_nas, d_nas.val, d_nas.sma200, d_nas.vol_ratio, fractal_mult, d_nas.kurt, d_nas.phase_sync)
+    f_add(candidates, "US500", sc_spx, en_spx, ema_spx, d_us500.val, d_us500.sma200, d_us500.vol_ratio, fractal_mult, d_us500.kurt, d_us500.phase_sync)
+    f_add(candidates, "GER40", sc_dax, en_dax, ema_dax, d_dax.val, d_dax.sma200, d_dax.vol_ratio, fractal_mult, d_dax.kurt, d_dax.phase_sync)
+    f_add(candidates, "US02Y", sc_us02y, en_us02y, ema_us02y, d_us02y.val, d_us02y.sma200, d_us02y.vol_ratio, fractal_mult, d_us02y.kurt, d_us02y.phase_sync)
+    f_add(candidates, "USOIL", sc_oil, en_oil, ema_oil, d_oil.val, d_oil.sma200, d_oil.vol_ratio, fractal_mult, d_oil.kurt, d_oil.phase_sync)
+// ✂️ クロス円の追加部分を以下のように変更
+    // 合成価格(val_ej)を使用し、テクニカル指標は中立(0や1.0)を渡してスキップさせる
+    f_add(candidates, "EURJPY", sc_eurjpy, en_ej, 0, val_ej, val_ej, 1.0, fractal_mult, d_ej.kurt, false)
+    f_add(candidates, "GBPJPY", sc_gbpjpy, en_gj, 0, val_gj, val_gj, 1.0, fractal_mult, d_gj.kurt, false)
+    f_add(candidates, "AUDJPY", sc_audjpy, en_aj, 0, val_aj, val_aj, 1.0, fractal_mult, d_aj.kurt, false)
+
+
+f_split_candidates() =>
+    if array.size(candidates) > 0
+        for i = 0 to array.size(candidates) - 1
+            TradePair p = array.get(candidates, i)
+            if p.score > 0
+                array.push(list_long, p)
+            else
+                array.push(list_short, p)
+
+
+// ==========================================
+// (Orphaned block removed)
+
+
+f_sort_lists() =>
+    if array.size(list_long) > 1
+        for i = 0 to array.size(list_long) - 2
+            int max_idx = i
+            for j = i + 1 to array.size(list_long) - 1
+                if array.get(list_long, j).score > array.get(list_long, max_idx).score
+                    max_idx := j
+            if max_idx != i
+                TradePair temp = array.get(list_long, i)
+                array.set(list_long, i, array.get(list_long, max_idx))
+                array.set(list_long, max_idx, temp)
+   
+    if array.size(list_short) > 1
+        for i = 0 to array.size(list_short) - 2
+            int min_idx = i
+            for j = i + 1 to array.size(list_short) - 1
+                if array.get(list_short, j).score < array.get(list_short, min_idx).score
+                    min_idx := j
+            if min_idx != i
+                TradePair temp = array.get(list_short, i)
+                array.set(list_short, i, array.get(list_short, min_idx))
+                array.set(list_short, min_idx, temp)
+
+
+// 🚀 MAIN EXECUTION (Stabilized)
+// Calculate only on confirmed bars (Close) to prevent flickering
+if barstate.isconfirmed
+    array.clear(candidates)
+    array.clear(list_long)
+    array.clear(list_short)
+    f_populate_candidates()
+    f_split_candidates()
+    f_sort_lists()
+
+
+string top_long_name = array.size(list_long) > 0 ? array.get(list_long, 0).name : f_lang("Wait", "Neutral", "様子見")
+float top_long_score = array.size(list_long) > 0 ? array.get(list_long, 0).score : 0.0
+string top_short_name = array.size(list_short) > 0 ? array.get(list_short, 0).name : f_lang("Wait", "Neutral", "様子見")
+float top_short_score = array.size(list_short) > 0 ? array.get(list_short, 0).score : 0.0
+
+
+// 🟢 【修正2】 このセクション全体を以下で上書き
+// ==========================================
+// コンテキスト & メッセージ生成
+// ==========================================
+// (変数は修正1で定義済みのため、ここではロジックのみ記述)
+
+
+// レジーム判定ロジック
+// (stagflation legacy assignment removed)
+bool policy_mistake = y_up and rising_unemp
+bool strong_usd = d_up and y_up and s_up
+bool fiat_debase = d_dn and g_up and d_eur.z < 0.2
+bool yield_inv = d_us10y.val < d_us02y.val
+bool good_yield_rise = corr_spx_yield > 0.3 and y_up and s_up
+bool bad_yield_rise = corr_spx_yield < -0.3 and y_up and s_dn
+
+
+float score = 0.0
+score := score + (d_us500.z > 0.2 ? 1 : d_us500.z < -0.2 ? -1 : 0)
+score := score + (d_nas.z > 0.2 ? 1 : d_nas.z < -0.2 ? -1 : 0)
+score := score + (d_us500.is_bull ? 1 : -1)
+score := score + (d_nas.is_bull ? 1 : -1)
+if d_vix.val < 15
+    score := score + 1.0
+else if d_vix.val > 25
+    score := score - 1.5
+if d_vix.z < -0.5
+    score := score + 0.5
+else if d_vix.z > 0.5
+    score := score - 1.0
+bool risk_seeking = d_nas.chg > d_us500.chg
+score := score + (risk_seeking ? 0.5 : -0.5)
+score := score + (d_btc.z > 0.5 ? 0.5 : d_btc.z < -0.5 ? -0.5 : 0)
+if d_us10y.z > 1.5
+    score := score - 1.0
+else if d_us10y.z < -1.0
+    score := score + 0.5
+if falling_conf
+    score := score - 1.0
+
+
+int star_count = 0
+string star_icon = ""
+string risk_mode_text = ""
+color risk_color = color.gray
+if score >= 4.0
+    star_count := 5, risk_mode_text := "RISK ON", risk_color := #00e676, star_icon := "★★★★★"
+else if score >= 2.5
+    star_count := 4, risk_mode_text := "RISK ON", risk_color := #66ffa6, star_icon := "★★★★☆"
+else if score >= 1.0
+    star_count := 3, risk_mode_text := "MILD ON", risk_color := #b9f6ca, star_icon := "★★★☆☆"
+else if score > -1.0
+    star_count := 2, risk_mode_text := "NEUTRAL", risk_color := color.gray, star_icon := "★★☆☆☆"
+else if score > -3.0
+    star_count := 3, risk_mode_text := "RISK OFF", risk_color := #ff8a80, star_icon := "★★★☆☆"
+else if score > -5.0
+    star_count := 4, risk_mode_text := "RISK OFF", risk_color := #ff5252, star_icon := "★★★★☆"
+else
+    star_count := 5, risk_mode_text := "CRASH", risk_color := #ff1744, star_icon := "★★★★★"
+
+
+string msg_main = f_lang("Range", "Rango", "レンジ")
+string msg_ctx = f_lang("No drivers. Random walk.", "Sin drivers. Movimiento aleatorio.", "ドライバー不在。個別要因で動く。")
+color c_bg = color.new(color.gray, 20)
+
+
+// 🔗 Map Legacy Variables to New Engine
+bool liquidity_crisis = reg_liq_crisis
+bool stagflation = reg_stagflation
+bool reflation_trade = reg_reflation
+bool deflation_risk = reg_deflation
+bool goldilocks = reg_goldilocks
+
+
+bool tech_rotation = d_nas.z < -1.0 and d_us500.z > 0.5
+bool value_rotation = d_nas.z > -0.5 and d_us500.z > 1.0 and d_nas.chg < d_us500.chg
+bool commodity_boom = d_oil.z > 1.5 and d_gold.z > 1.0
+bool dollar_dominance = d_dxy.z > 1.5 and d_eur.z < -1.0 and d_gbp.z < -1.0
+bool em_stress = d_aud.z < -1.0 and d_oil.z < -0.5
+bool safe_haven_flow = d_vix.z > 1.0 and d_gold.z > 1.0 and d_us10y.z < 0
+bool rate_cut_speculation = d_us10y.z < -1.5 and d_us500.z > 1.0
+
+
+// ==========================================
+// ==========================================
+// 🧠 Context Logic Engine (Function for memory optimization)
+// ==========================================
+type MarketCtx
+    string main
+    string sub
+    color bg
+
+
+// 🟢 【修正3】 この関数全体を以下で上書き
+// 🚀 Optimized to use implicit local scope (accessing globals defined above)
+f_get_market_ctx() =>
+    string _m = f_lang("Range", "Rango", "レンジ")
+    // モジュール2で定義した cycle_msg を復活
+    string _driver = w_liq > 0.6 ? "Liq Driven" : "Rate Driven"
+    string _s_en = cycle_msg + " | " + _driver
+    string _s_jp = (is_hiking_cycle ? "利上局面" : is_cutting_cycle ? "利下局面" : "中立") + " | " + (w_liq > 0.6 ? "流動性相場" : "金利相場")
+    string _s = f_lang(_s_en, _s_en, _s_jp)
+    color _c = color.new(color.gray, 20)
+   
+    // Priority 1: Extreme Risks
+    if panic_mode
+        _m := f_lang("PANIC MODE", "MODO PÁNICO", "パニック相場")
+        _s := f_lang("VIX Spike. Cash is king.", "Pico VIX. Efectivo es rey.", "VIX急騰。キャッシュ確保。")
+        _c := color.new(color.navy, 10)
+    else if liquidity_crisis
+        _m := f_lang("Liquidity Crisis", "Crisis Liquidez", "流動性危機")
+        _s := f_lang("Net Liq Draining.", "Drenaje Liquidez.", "流動性急減。")
+        _c := color.new(#8b0000, 10)
+    else if jpy_crash
+        _m := f_lang("Yen Crash", "Colapso Yen", "円安クライマックス")
+        _s := f_lang("Intervention alert.", "Alerta Intervención.", "介入警戒。")
+        _c := color.new(#880e4f, 10)
+    // Priority 2: Major Regimes
+    else if goldilocks
+        _m := f_lang("GOLDILOCKS", "Ricitos de Oro", "ゴルディロックス")
+        _s := f_lang("Growth↑ Yields→", "Crecimiento↑ Tasas→", "適温相場。株高。")
+        _c := color.new(#00c853, 10)
+    else if stagflation
+        _m := f_lang("Stagflation", "Estanflación", "スタグフレーション")
+        _s := f_lang("Inf↑ Growth↓", "Inf↑ Crecimiento↓", "不況下の物価高。")
+        _c := color.new(#b71c1c, 10)
+    else if reflation_trade
+        _m := f_lang("Reflation", "Reflación", "リフレトレード")
+        _s := f_lang("Oil↑ Yields↑ Stocks↑", "Petróleo↑ Tasas↑", "原油・金利・株高。")
+        _c := color.new(#1b5e20, 10)
+    else if deflation_risk
+        _m := f_lang("Deflation Risk", "Riesgo Deflación", "デフレ懸念")
+        _s := f_lang("All Dropping.", "Todo cayendo.", "全面安・金利低下。")
+        _c := color.new(#37474f, 10)
+    // Priority 3: Market Themes
+    else if policy_mistake
+        _m := "Policy Mistake", _c := color.new(#4a148c, 10)
+    else if dollar_dominance
+        _m := "USD Dominance", _c := color.new(#1b5e20, 10)
+    else if commodity_boom
+        _m := "Commodity Boom", _c := color.new(#e65100, 10)
+    else if tech_rotation
+        _m := "Tech Rotation", _c := color.new(#4a148c, 10)
+    else if value_rotation
+        _m := "Value Lead", _c := color.new(#33691e, 10)
+    else if safe_haven_flow
+        _m := "Safe Haven", _c := color.new(#263238, 10)
+    else if rate_cut_speculation
+        _m := "Rate Cut Bets", _c := color.new(#004d40, 10)
+    else if em_stress
+        _m := "EM Stress", _c := color.new(#bf360c, 10)
+    else if d_up and s_dn
+        _m := "USD Haven", _c := color.new(#311b92, 10)
+    else if j_up and s_dn
+        _m := "Risk-Off (Yen)", _c := color.new(#1a237e, 10)
+    else if j_up and d_dn
+        _m := "Heavy (Yen↑ USD↓)", _c := color.new(color.gray, 20)
+    else if d_up and j_dn
+        _m := "USD Bid", _c := color.new(#0d47a1, 10)
+    else if bad_yield_rise
+        _m := "Bad Yield Rise", _c := color.new(#4a148c, 10)
+    else if score >= 3.0
+        _m := risk_seeking ? "Goldilocks" : "Defensive"
+        _s := risk_seeking ? "Risk On" : "Defensive Rotation"
+        _c := risk_seeking ? color.new(#00c853, 10) : color.new(#2e7d32, 10)
+    else if score <= -3.0
+        _m := "Bear Trend"
+        _s := "Downtrend"
+        _c := color.new(#3e2723, 10)
+    else
+        if s_up
+            _m := "Firm", _s := "Uptrend", _c := color.new(color.green, 20)
+        else if s_dn
+            _m := "Soft", _s := "Heavy", _c := color.new(color.gray, 20)
+
+
+    MarketCtx.new(_m, _s, _c)
+
+
+// 🚀 Call Optimized Function
+MarketCtx ctx_data = f_get_market_ctx()
+msg_main := ctx_data.main
+msg_ctx := ctx_data.sub
+c_bg := ctx_data.bg
+
+
+if is_weekend and syminfo.type != "crypto"
+    msg_ctx := msg_ctx + f_lang("\n⚠️ Weekend: Data frozen", "\n⚠️ Fin de semana: Datos congelados", "\n⚠️ 週末: データ停止中")
+
+
+// ==========================================
+// 🎨 UI: Ultimate Cockpit Design (Ver 4.0)
+// ==========================================
+
+
+// --- Premium Palette ---
+color c_vip_bg   = color.new(#000000, 20) // Deep Black Glass
+color c_neon_g   = #00e676 // Matrix Green
+color c_neon_r   = #ff1744 // Cyber Red
+color c_neon_b   = #2979ff // Electric Blue
+color c_gold     = #ffd700 // Premium Gold
+color c_text_w   = #eceff1 // Platinum White
+color c_text_g   = #b0bec5 // Titanium Gray
+
+
+// --- Visual Helpers ---
+f_bar(_val, _max, _is_bi) =>
+    float _norm = math.min(math.abs(_val), _max)
+    // Scale: 0.5 score = 1 bar (Max 5.0 -> 10 bars)
+    int _bars = math.round(_norm * 2.0)
+    string _s = ""
+    string _icon = "/" // User requested slash
+    if _bars > 0
+        for i = 1 to _bars
+            _s := _s + _icon
+    // No brackets, pure bars
+    _s
+
+
+f_meter(_val) =>
+    _val > 0.8 ? "⚡⚡⚡" : _val > 0.5 ? "⚡⚡" : "⚡"
+
+
+// --- Dashboard Logic ---
+
+
+// リスト生成（Long）- Card Style
+string txt_long = ""
+if array.size(list_long) > 0
+    int max_display = math.min(array.size(list_long), max_pairs)
+    for i = 0 to max_display - 1
+        TradePair p = array.get(list_long, i)
+        string _b = f_bar(p.score, 5.0, false)
+        // Clean Text: Removed "🚀"
+        txt_long := txt_long + p.name + " " + _b + "\n"
+else
+    txt_long := "Wait..."
+
+
+// リスト生成（Short）- Card Style
+string txt_short = ""
+if array.size(list_short) > 0
+    int max_display_short = math.min(array.size(list_short), max_pairs)
+    for i = 0 to max_display_short - 1
+        TradePair p = array.get(list_short, i)
+        string _b = f_bar(p.score, 5.0, false)
+        // Clean Text: Removed "💀"
+        txt_short := txt_short + p.name + " " + _b + "\n"
+else
+    txt_short := "Cash..."
+
+
+// テーブル位置設定 (Directly use processed input)
+// The pos_input Logic at top of file (lines 71-89) already converts User String -> Pine Constant.
+// So we just use pos_input directly.
+
+// テーブル作成 (3 Rows for Compact Vertical Layout)
+// Row 0: Header
+// Row 1: Status (L) | Long (R)
+// Row 2: Driver (L) | Short (R)
+// Row 3: Spacer (Transparent)
+var table panel = table.new(pos_input, 2, 8, border_width=0, border_color=color.new(color.gray, 100))
+
+
+// ==========================================
+// 🎨 UI: New Layout (Split: Left Status / Right Signals)
+// ==========================================
+
+// 🟢 Status Text Generator (Comprehensive Natural Language)
+f_get_status_text() =>
+    string _txt = ""
+    
+    // 1. Global Liquidity (Liq)
+    string l_title = lang_select == "日本語" ? "・流動性: " : (lang_select == "Español" ? "・Liq: " : "・Liq: ")
+    string l_val = ""
+    if Global_Liq_Score > 1.0
+        l_val := lang_select == "日本語" ? "極めて潤沢" : (lang_select == "Español" ? "Extrema" : "Abundant")
+    else if Global_Liq_Score > 0.0
+        l_val := lang_select == "日本語" ? "安定推移" : (lang_select == "Español" ? "Estable" : "Stable")
+    else if Global_Liq_Score > -1.0
+        l_val := lang_select == "日本語" ? "やや逼迫" : (lang_select == "Español" ? "Ajustada" : "Tightening")
+    else
+        l_val := lang_select == "日本語" ? "枯渇気味 (注意)" : (lang_select == "Español" ? "Agotada (Aviso)" : "Depleted (Warn)")
+    _txt := _txt + l_title + l_val + "\n"
+    
+    // 2. Volatility (VIX)
+    string v_title = lang_select == "日本語" ? "・ボラ: " : (lang_select == "Español" ? "・Vol: " : "・Vol: ")
+    string v_val = ""
+    if panic_mode
+        v_val := lang_select == "日本語" ? "パニック (警戒)" : (lang_select == "Español" ? "Pánico (Alerta)" : "Panic (Alert)")
+    else if d_vix.val < 15
+        v_val := lang_select == "日本語" ? "静穏 (リスク選好)" : (lang_select == "Español" ? "Calma (Risk-On)" : "Calm (Risk-On)")
+    else if d_vix.val > 20
+        v_val := lang_select == "日本語" ? "拡大中 (不安定)" : (lang_select == "Español" ? "Alta (Inestable)" : "Expanding")
+    else
+        v_val := lang_select == "日本語" ? "通常レベル" : (lang_select == "Español" ? "Normal" : "Normal")
+    _txt := _txt + v_title + v_val + "\n"
+
+    // 3. Trend Quality (Hurst)
+    string h_title = lang_select == "日本語" ? "・トレンド: " : (lang_select == "Español" ? "・Tend: " : "・Trend: ")
+    string h_val = ""
+    if h_high
+        h_val := lang_select == "日本語" ? "明確な発生中" : (lang_select == "Español" ? "Fuerte" : "Strong")
+    else if h_low
+        h_val := lang_select == "日本語" ? "方向感なし (レンジ)" : (lang_select == "Español" ? "Sin Rumbo" : "Aimless")
+    else
+        h_val := lang_select == "日本語" ? "中立" : (lang_select == "Español" ? "Neutral" : "Neutral")
+    _txt := _txt + h_title + h_val + "\n"
+
+    // 4. Market Physics (Velocity & Coherence)
+    float vel_mag = math.abs(d_us500.velocity)
+    string p_title = lang_select == "日本語" ? "・勢い: " : (lang_select == "Español" ? "・Velo: " : "・Velo: ")
+    string p_val = ""
+    if vel_mag > 0.8
+        p_val := lang_select == "日本語" ? "非常に強い" : (lang_select == "Español" ? "Muy Alta" : "Very High")
+    else if vel_mag > 0.5
+        p_val := lang_select == "日本語" ? "強い" : (lang_select == "Español" ? "Alta" : "High")
+    else
+        p_val := lang_select == "日本語" ? "弱い" : (lang_select == "Español" ? "Baja" : "Low")
+    _txt := _txt + p_title + p_val + "\n"
+
+    string c_title = lang_select == "日本語" ? "・相関: " : (lang_select == "Español" ? "・Corr: " : "・Corr: ")
+    string c_val = ""
+    if is_sys_risk
+        c_val := lang_select == "日本語" ? "全資産同調 (危険)" : (lang_select == "Español" ? "Sistémico (Riesgo)" : "Systemic (Risk)")
+    else if is_coherent_trend
+        c_val := lang_select == "日本語" ? "健全な連動" : (lang_select == "Español" ? "Coherente" : "Coherent")
+    else
+        c_val := lang_select == "日本語" ? "個別要因 (分散)" : (lang_select == "Español" ? "Divergente" : "Divergent")
+    _txt := _txt + c_title + c_val + "\n"
+    
+    // 5. Structure (Reynolds)
+    string r_title = lang_select == "日本語" ? "・構造: " : (lang_select == "Español" ? "・Est: " : "・Struct: ")
+    string r_val = ""
+    if is_turbulent
+        r_val := lang_select == "日本語" ? "乱流 (不安定)" : (lang_select == "Español" ? "Turbulento" : "Turbulent")
+    else
+        r_val := lang_select == "日本語" ? "整流 (安定)" : (lang_select == "Español" ? "Laminar" : "Laminar")
+    
+    _txt := _txt + r_title + r_val
+    _txt
+
+string status_desc = f_get_status_text()
+
+// 🟢 Driver Bar Logic (Sorting top drivers)
+type Driver
+    string name
+    float val
+    float abs_val
+
+f_get_drivers_txt() =>
+    // Create list of drivers
+    var d_list = array.new<Driver>(0)
+    array.clear(d_list)
+    array.push(d_list, Driver.new("US02Y", d_us02y.z, math.abs(d_us02y.z)))
+    array.push(d_list, Driver.new("VIX", d_vix.z, math.abs(d_vix.z)))
+    array.push(d_list, Driver.new("SPX", d_us500.z, math.abs(d_us500.z)))
+    array.push(d_list, Driver.new("DXY", d_dxy.z, math.abs(d_dxy.z)))
+    array.push(d_list, Driver.new("US10Y", d_us10y.z, math.abs(d_us10y.z)))
+    array.push(d_list, Driver.new("GOLD", d_gold.z, math.abs(d_gold.z)))
+
+    // Sort by absolute Z-score (Impact)
+    int n = array.size(d_list)
+    if n > 1
+        for i = 0 to n - 2
+            int max_idx = i
+            for j = i + 1 to n - 1
+                if array.get(d_list, j).abs_val > array.get(d_list, max_idx).abs_val
+                    max_idx := j
+            if max_idx != i
+                Driver temp = array.get(d_list, i)
+                array.set(d_list, i, array.get(d_list, max_idx))
+                array.set(d_list, max_idx, temp)
+    
+    // Format Top 4
+    string _res = ""
+    for i = 0 to math.min(n, 4) - 1
+        Driver d = array.get(d_list, i)
+        string _arrow = d.val > 0.2 ? "⬆" : (d.val < -0.2 ? "⬇" : "━")
+        _res := _res + d.name + " " + _arrow + "   "
+    _res
+
+string driver_txt = f_get_drivers_txt()
+
+// 🟢 描画処理 using NEW Logic
+if barstate.islast
+    // Color Logic (Same as before)
+    color c_status_bg = c_vip_bg
+    if panic_mode or liquidity_crisis
+        c_status_bg := color.new(c_neon_r, 40)
+    else if score >= 3.0
+        c_status_bg := color.new(c_neon_g, 40)
+    else if score >= 1.0
+        c_status_bg := color.new(c_neon_g, 70)
+    else if score <= -3.0
+        c_status_bg := color.new(c_neon_r, 40)
+    else if score <= -1.0
+        c_status_bg := color.new(c_neon_r, 70)
+
+    // Dark Header Color
+    color c_header_bg = color.new(#333333, 10)
+
+    // --- Row 0: Header Row (Unified & Centered) ---
+    // Header Text
+    string header_title = "TRUE NORTH [" + sel_mode + "]"
+    
+    // Vertical Signal Lists (Dynamic Height)
+    string txt_l_vert = ""
+    int n_l = array.size(list_long)
+    int show_l = math.min(n_l, 5)
+    
+    if n_l > 0
+        for i = 0 to show_l - 1
+            TradePair p = array.get(list_long, i)
+            string _b = f_bar(p.score, 5.0, false)
+            string _line = p.name + " " + _b
+            txt_l_vert := txt_l_vert + _line + (i < show_l - 1 ? "\n" : "")
+    else
+        txt_l_vert := f_lang("Wait...", "Espera...", "様子見...")
+        
+    // Short List (Dynamic Height)
+    string txt_s_vert = ""
+    int n_s = array.size(list_short)
+    int show_s = math.min(n_s, 5)
+    
+    if n_s > 0
+        for i = 0 to show_s - 1
+            TradePair p = array.get(list_short, i)
+            string _b = f_bar(p.score, 5.0, false)
+            string _line = p.name + " " + _b
+            txt_s_vert := txt_s_vert + _line + (i < show_s - 1 ? "\n" : "")
+    else
+        txt_s_vert := f_lang("Cash...", "Efectivo", "キャッシュ")
+    
+    // Define variables needed for both compact and full cockpit modes, or for the full cockpit mode outside its block
+    // FRB 3-Month Delta Logic (Calculation moved to global scope)
+    float spread_new = val_ref_new - val_ref_3m
+    string cyc_arrow_new = spread_new > 0.1 ? "⇡" : (spread_new < -0.1 ? "⇣" : "→")
+    string frb_txt = "FRB: " + str.tostring(val_ref_new, "#.##") + "% " + cyc_arrow_new
+    
+    string sys_go_jp = score >= 3.0 ? "🚀 全システム稼働" : score <= -3.0 ? "🐻 完全防衛モード" : "⏳ 待機 (レンジ)"
+    string sys_go_es = score >= 3.0 ? "🚀 SISTEMAS GO" : score <= -3.0 ? "🐻 DEFENSA TOTAL" : "⏳ ESPERA"
+    string sys_go_en = score >= 3.0 ? "🚀 ALL SYSTEMS GO" : score <= -3.0 ? "🐻 TOTAL DEFENSE" : "⏳ HOLDING PATTERN"
+    string sys_go_final = veto_fast ? (lang_select == "日本語" ? "🚫 拒否 (VETO)" : (lang_select == "Español" ? "🚫 VETO" : "🚫 VETO")) : (lang_select == "日本語" ? sys_go_jp : (lang_select == "Español" ? sys_go_es : sys_go_en))
+
+    // Unified Right Column Text Blocks (Title included for compact rows)
+    string right_long_block = "LONG\n" + txt_l_vert
+    string right_short_block = "SHORT\n" + txt_s_vert
+
+    // Dynamic Size Logic (using table_scale input)
+    // table_scale 1-7. Default 4.
+    // We map 4 -> Size.Normal / Size.Small
+    string sz_norm_dyn = size.normal
+    string sz_small_dyn = size.small
+    
+    if table_scale == 1
+        sz_norm_dyn := size.small
+        sz_small_dyn := size.tiny
+    else if table_scale == 2
+        sz_norm_dyn := size.small
+        sz_small_dyn := size.tiny
+    else if table_scale == 3
+        sz_norm_dyn := size.normal
+        sz_small_dyn := size.small
+    else if table_scale == 4 // Default
+        sz_norm_dyn := size.normal
+        sz_small_dyn := size.small // Keep small for secondary text if needed, but User asked for Normal for Tickers
+    else if table_scale == 5
+        sz_norm_dyn := size.large
+        sz_small_dyn := size.normal
+    else if table_scale == 6
+        sz_norm_dyn := size.large
+        sz_small_dyn := size.normal
+    else if table_scale == 7
+        sz_norm_dyn := size.huge
+        sz_small_dyn := size.large
+        
+    // User requested Tickers be same size as FRB (Normal).
+    // So we use sz_norm_dyn for almost everything.
+
+    if show_signals_only
+        // --- 1 Column Mode (Compact) ---
+        table.cell(panel, 0, 0, header_title, bgcolor=c_header_bg, text_color=c_text_w, text_size=sz_norm_dyn, text_halign=text.align_center)
+        
+        table.cell(panel, 0, 1, "LONG", bgcolor=c_vip_bg, text_color=c_text_w, text_size=sz_small_dyn, text_halign=text.align_left)
+        table.cell(panel, 0, 2, txt_l_vert, bgcolor=c_vip_bg, text_color=c_neon_g, text_size=sz_norm_dyn, text_halign=text.align_left)
+        table.cell(panel, 0, 3, "SHORT", bgcolor=c_vip_bg, text_color=c_text_w, text_size=sz_small_dyn, text_halign=text.align_left)
+        table.cell(panel, 0, 4, txt_s_vert, bgcolor=c_vip_bg, text_color=c_neon_r, text_size=sz_norm_dyn, text_halign=text.align_left)
+        
+        // Clean up Right Column
+        table.merge_cells(panel, 1, 0, 1, 6)
+        table.cell(panel, 1, 0, "", bgcolor=color.new(color.black, 100))
+        
+    else
+        // --- 2 Column Mode (Full Cockpit) ---
+        // Layout: Driver Up (Row 2) + Independent Left Status
+        
+        // Row 0: Header (Spans 2 columns)
+        table.cell(panel, 0, 0, header_title, bgcolor=c_header_bg, text_color=c_text_w, text_size=sz_norm_dyn, text_halign=text.align_center)
+        table.merge_cells(panel, 0, 0, 1, 0)
+        
+        // Full Left Block Content (Sys + FRB + Status + Driver)
+        // User Request: 
+        // 1. FRB to right of Sys (Top Line).
+        // 2. Driver in FRB's old spot (Bottom).
+        string driver_compact = f_get_drivers_txt()
+        string full_left_block = sys_go_final + "   " + frb_txt + "\n" + status_desc + "\n" + driver_compact
+        
+        // Row 1: Left Status (Merged R1-R2) | Right Long Block
+        // We merge Left R1-R2 to create a single pane for the stacked info.
+        table.merge_cells(panel, 0, 1, 0, 2)
+        table.cell(panel, 0, 1, full_left_block, bgcolor=c_status_bg, text_color=c_text_w, text_size=sz_norm_dyn, text_halign=text.align_left, text_valign=text.align_top)
+        
+        table.cell(panel, 1, 1, right_long_block, bgcolor=c_vip_bg, text_color=c_neon_g, text_size=sz_norm_dyn, text_halign=text.align_left, text_valign=text.align_top)
+        
+        // Row 2: Right Short Block (Align Top)
+        // Left is merged, so we only set Right.
+        table.cell(panel, 1, 2, right_short_block, bgcolor=c_vip_bg, text_color=c_neon_r, text_size=sz_norm_dyn, text_halign=text.align_left, text_valign=text.align_top)
+        
+        // Row 3: Transparent Spacer (Left & Right)
+        table.cell(panel, 0, 3, "", bgcolor=color.new(color.black, 100), text_size=size.tiny)
+        table.cell(panel, 1, 3, "", bgcolor=color.new(color.black, 100), text_size=size.tiny)
+        
+        // Unmerge Left R1-R2 (Previously merged in Step 836)
+        // In this logic, we call table.cell directly for Row 1 and Row 2.
+        // No merge calls needed for R1-R2.
+        // This ensures Driver (R2) is independent and has Gray BG.
+        
+        // Alignment Check:
+        // Left R1 (Status) aligns BOTTOM.
+        // Right R1 (Long) aligns TOP.
+        // If Right R1 is taller than Left R1, empty space appears ABOVE Status.
+        // Status sits directly on top of Row 2 (Driver).
+        // This creates "Struct -> FRB -> [Border] -> Driver".
+        // Driver is Row 2.
+        // Right R2 (Short) starts at same level as Driver.
+        // If Short is taller than Driver, Driver sits centered/top in Row 2.
+        // Spacer (R3) follows.
+
+
+// ==========================================
+// ==========================================
+// 🔔 DYNAMIC NOTIFICATION SYSTEM (God-Tier)
+// ==========================================
+
+// Helper: Format Dynamic Message
+f_notify(_title, _msg, _ticker, _act, _sc, _u_txt) =>
+    string _t = str.format("{0,time,short}", timenow) // Safe Time Format
+    string _p = str.tostring(close, "#.####") // Safe Price Format
+    string _chg = str.tostring((close - close[1])/close[1]*100, "#.##") + "%"
+    
+    // JSON-like Structure for Webhooks (Optional) or Clean Text
+    // "[Time] [Mode] TICKER | ACTION | Score: X.X | Context | Price"
+    string _base = "🚀 [" + sel_mode + "] " + _ticker + " " + _act + "\n"
+    string _det = "📊 Score: " + str.tostring(_sc, "#.1") + " | " + _u_txt + "\n"
+    string _mkt = "� Price: " + _p + " (" + _chg + ") | " + _msg
+    _title + "\n" + _base + _det + _mkt
+
+// Triggers (Confirmed Only)
+bool is_conf = barstate.isconfirmed
+
+// 1. Regime Shift
+bool chg_regime = risk_mode_text != risk_mode_text[1] and is_conf
+alertcondition(chg_regime, "🔔 Regime Shift", "Market regime changed")
+
+// 2. Rating Up
+bool chg_stars_up = star_count > star_count[1] and is_conf
+alertcondition(chg_stars_up, "🌟 Rating Up", "Score improved")
+
+// 3. Panic Mode
+alertcondition(panic_mode and is_conf, "🚨 Panic", "VIX exceeded warning level")
+
+// 4. Z-Score Extreme
+bool z_extreme = ((math.abs(d_gold.z) > 2.0 and math.abs(d_gold.z) > math.abs(d_gold.z[1])) or (math.abs(d_us10y.z) > 2.0 and math.abs(d_us10y.z) > math.abs(d_us10y.z[1]))) and is_conf
+alertcondition(z_extreme, "⚡ Z-Score Extreme", "Gold/Yields at ±2σ")
+
+// 5. SMA Cross
+bool sma_cross = (ta.crossover(d_us500.val, d_us500.sma200) or ta.crossunder(d_us500.val, d_us500.sma200)) and is_conf
+alertcondition(sma_cross, "🔄 SMA200 Cross", "S&P crossed long-term pivot")
+
+// 6. Go Signal (Top Long Change or New Entry)
+bool go_signal = (top_long_name != f_lang("Wait", "Neutral", "様子見") and top_long_name[1] == f_lang("Wait", "Neutral", "様子見")) and is_conf
+alertcondition(go_signal, "🚀 Go Signal", "Recommendation emerged")
+
+// 7. Pair Change
+bool pair_change = (top_long_name != top_long_name[1] and top_long_name != f_lang("Wait", "Neutral", "様子見")) and is_conf
+alertcondition(pair_change, "💱 Pair Changed", "Top pair switched")
+
+// 8. High Confidence
+bool high_score = (top_long_score > 2.5 and top_long_score[1] <= 2.5) and is_conf
+alertcondition(high_score, "🎯 High Confidence", "Score exceeded 2.5")
+
+// 9. Squeeze Alert (Whale Flow)
+bool squeeze_alert = (d_gold.vol_ratio < 0.8 and d_gold.vol_ratio[1] >= 0.8) or (d_uj.vol_ratio < 0.8 and d_uj.vol_ratio[1] >= 0.8) or (d_nas.vol_ratio < 0.8 and d_nas.vol_ratio[1] >= 0.8) or (d_btc.vol_ratio < 0.8 and d_btc.vol_ratio[1] >= 0.8)
+bool squeeze_fired = squeeze_alert and is_conf
+alertcondition(squeeze_fired, "� Energy Release", "Major asset squeeze detected")
+
+// ----------------------------------------------------
+// 📲 DYNAMIC ALERT TRIGGER (One Alert to Rule Them All)
+// ----------------------------------------------------
+if is_conf
+    string _alert_msg = ""
+    
+    // Priority 1: Panic/Crisis
+    if panic_mode and not panic_mode[1]
+        _alert_msg := f_notify("🚨 PANIC PROTOCOL", "VIX Spike > 30. Cash is King.", "ALL MARKETS", "DEFENSE", score, risk_mode_text)
+        alert(_alert_msg, alert.freq_once_per_bar_close)
+        
+    // Priority 2: Go Signal / Rotation
+    else if go_signal or pair_change
+        string _tick = top_long_name
+        float _sc = top_long_score
+        string _act = "GO LONG"
+        string _reason = "Top Rank Rotation"
+        _alert_msg := f_notify("TRUE NORTH SIGNAL", _reason, _tick, _act, _sc, risk_mode_text)
+        alert(_alert_msg, alert.freq_once_per_bar_close)
+        
+    // Priority 3: Squeeze
+    else if squeeze_fired
+        // Find who squeezed (Simplified)
+        string _sq_tick = "ASSET"
+        if d_gold.vol_ratio < 0.8
+            _sq_tick := "GOLD"
+        else if d_btc.vol_ratio < 0.8
+            _sq_tick := "BTC"
+        else if d_nas.vol_ratio < 0.8
+            _sq_tick := "NAS100"
+            
+        _alert_msg := f_notify("💣 SQUEEZE DETECTED", "Volatility compression breaking.", _sq_tick, "WATCH", 0.0, "Energy Loading")
+        alert(_alert_msg, alert.freq_once_per_bar_close)
+

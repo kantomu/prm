@@ -1,0 +1,102 @@
+//@version=6
+indicator("Keltner Footprint Fusion [Pro]", shorttitle="KF_Fusion", overlay=true)
+
+// --- Keltner Settings ---
+grp_kc = "Keltner Channel"
+len = input.int(20, "Length", group=grp_kc)
+mult = input.float(2.0, "Multiplier", group=grp_kc)
+src = input(close, "Source", group=grp_kc)
+useTrueRange = input(true, "Use True Range", group=grp_kc)
+
+// --- Footprint Settings ---
+grp_fp = "Order Flow (Footprint)"
+numTicksInput = input.int(100, "Ticks per footprint row", group=grp_fp)
+vaInput = input.int(70, "Value Area percentage", group=grp_fp)
+smoothLen = input.int(7, "Delta Smoothing Length", group=grp_fp) // Default aligned to 7 based on user preference
+
+// --- Keltner Logic ---
+basis = ta.ema(src, len)
+range_ma = ta.ema(useTrueRange ? ta.tr : high - low, len)
+upper = basis + range_ma * mult
+lower = basis - range_ma * mult
+
+// Plot Keltner
+plot(basis, "Basis", color=color.gray)
+p1 = plot(upper, "Upper", color=color.blue)
+p2 = plot(lower, "Lower", color=color.blue)
+fill(p1, p2, color=color.new(color.blue, 95))
+
+// --- Footprint Logic ---
+footprint reqFootprint = request.footprint(numTicksInput, vaInput)
+
+// Extract Delta
+[delta, totalVol] = if not na(reqFootprint)
+    [reqFootprint.delta(), reqFootprint.total_volume()]
+else
+    [0.0, 0.0]
+
+// Calculate Delta Ratio/Intensity
+deltaRatio = totalVol != 0 ? (delta / totalVol) * 100 : 0
+// Smooth it to reduce noise
+smoothedDelta = ta.ema(deltaRatio, smoothLen)
+
+// --- Trend Filter Logic ---
+ema200 = ta.ema(close, 200)
+sma200 = ta.sma(close, 200)
+
+// Trend State
+bool trendBullish = ema200 > sma200
+bool trendBearish = ema200 < sma200
+
+// --- Fusion Anomalies (Divergence Logic) ---
+// Bullish Anomaly: Price is in Bearish Zone (< Basis) but Order Flow is Buying (> 0)
+// We add a threshold to make it "practical" - must be non-trivial buying
+bool bullAnomaly = close < basis and smoothedDelta > 0
+
+// Bearish Anomaly: Price is in Bullish Zone (< Basis) but Order Flow is Selling (< 0)
+bool bearAnomaly = close > basis and smoothedDelta < 0
+
+// Significant Volume Filter (to avoid noise during low activity)
+bool significantVol = volume > ta.sma(volume, 20)
+
+// Final Signals (Filtered by Trend)
+bool signalBuy = bullAnomaly and significantVol and trendBullish
+bool signalSell = bearAnomaly and significantVol and trendBearish
+
+// --- Visuals ---
+// Color Bars based on Anomaly
+barColor = signalBuy ? color.lime : signalSell ? color.red : na
+barcolor(barColor, title="Anomaly Bar Color")
+
+// Plot Shapes for Strong Anomalies (Absorption Candidates)
+// Removed text as requested
+plotshape(signalBuy, "Hidden Buying", shape.labelup, location.belowbar, color.lime, size=size.small)
+plotshape(signalSell, "Hidden Selling", shape.labeldown, location.abovebar, color.red, size=size.small)
+
+// --- Alerts ---
+alertcondition(signalBuy, "Hidden Buying Alert", "Price < Basis but Net Buying Detected (Trend Aligned)")
+alertcondition(signalSell, "Hidden Selling Alert", "Price > Basis but Net Selling Detected (Trend Aligned)")
+
+// --- Dashboard ---
+var table panel = table.new(position.top_right, 2, 5, border_width=1)
+if barstate.islast
+    table.cell(panel, 0, 0, "Trend Filter (200)", bgcolor=color.gray, text_color=color.white)
+    table.cell(panel, 1, 0, trendBullish ? "Bullish (EMA > SMA)" : "Bearish (EMA < SMA)", bgcolor=trendBullish ? color.green : color.red, text_color=color.white)
+
+    table.cell(panel, 0, 1, "Keltner Zone", bgcolor=color.gray, text_color=color.white)
+    table.cell(panel, 1, 1, close > basis ? "Bullish (> Basis)" : "Bearish (< Basis)", bgcolor=close > basis ? color.green : color.red, text_color=color.white)
+    
+    table.cell(panel, 0, 2, "Net Delta (Smoothed)", bgcolor=color.gray, text_color=color.white)
+    table.cell(panel, 1, 2, str.tostring(math.round(smoothedDelta, 2)) + "%", bgcolor=smoothedDelta > 0 ? color.lime : color.red, text_color=color.black)
+    
+    table.cell(panel, 0, 3, "Status", bgcolor=color.gray, text_color=color.white)
+    string statusText = "Normal"
+    color statusColor = color.gray
+    if signalBuy
+        statusText := "HIDDEN BUYING"
+        statusColor := color.lime
+    else if signalSell
+        statusText := "HIDDEN SELLING"
+        statusColor := color.red
+    
+    table.cell(panel, 1, 3, statusText, bgcolor=statusColor, text_color=statusColor == color.lime ? color.black : color.white)

@@ -1,0 +1,199 @@
+//@version=5
+indicator("SMA Wave Counter", overlay=true, max_bars_back=500)
+
+// ============================================================================
+// 設定
+// ============================================================================
+len_sma = input.int(15, "基準SMA期間", minval=1)
+show_zig = input.bool(true, "ZigZagライン表示")
+show_label = input.bool(true, "波動ラベル表示")
+
+// ============================================================================
+// 15SMAベースのZigZagロジック
+// ============================================================================
+// ロジック:
+// 1. 価格がSMAより上にある間は「上昇波」。その期間の最高値を記録。
+// 2. 価格がSMAより下にある間は「下降波」。その期間の最安値を記録。
+// 3. 上抜け/下抜け確定時に、前の波のピーク(High/Low)を確定させる。
+
+sma = ta.sma(close, len_sma)
+
+// 状態管理
+// 1 = 上昇中 (Price > SMA), -1 = 下降中 (Price < SMA)
+var int trend_dir = 0
+var float peak_price = na
+var int peak_bar_index = 0
+
+// トレンド転換検知
+bool crossover = ta.crossover(close, sma)
+bool crossunder = ta.crossunder(close, sma)
+
+// ピーク情報の配列 (index, price)
+// 0: 最新, 1: 1つ前, 2: 2つ前 ...
+var pivot_idx = array.new_int(0)
+var pivot_price = array.new_float(0)
+var pivot_type = array.new_int(0) // 1=High, -1=Low
+
+// 初期化
+if barstate.isfirst
+    trend_dir := close > sma ? 1 : -1
+    peak_price := close
+    peak_bar_index := bar_index
+
+// 現在のトレンドごとの挙動
+if trend_dir == 1
+    // 上昇中: 最高値を更新し続ける
+    if close > peak_price
+        peak_price := close
+        peak_bar_index := bar_index
+    
+    // 下抜け時: 上昇波終了 → High確定
+    if crossunder
+        array.unshift(pivot_idx, peak_bar_index)
+        array.unshift(pivot_price, peak_price)
+        array.unshift(pivot_type, 1) // High
+        
+        // 次のトレンド（下降）の準備
+        trend_dir := -1
+        peak_price := close
+        peak_bar_index := bar_index
+
+else
+    // 下降中: 最安値を更新し続ける
+    if close < peak_price
+        peak_price := close
+        peak_bar_index := bar_index
+        
+    // 上抜け時: 下降波終了 → Low確定
+    if crossover
+        array.unshift(pivot_idx, peak_bar_index)
+        array.unshift(pivot_price, peak_price)
+        array.unshift(pivot_type, -1) // Low
+        
+        // 次のトレンド（上昇）の準備
+        trend_dir := 1
+        peak_price := close
+        peak_bar_index := bar_index
+
+// 配列サイズ制限
+if array.size(pivot_idx) > 20
+    array.pop(pivot_idx)
+    array.pop(pivot_price)
+    array.pop(pivot_type)
+
+// ============================================================================
+// 波動カウントロジック (Wave 1-5 Logic)
+// ============================================================================
+// 最新の確定ピボット配列を使って波動認識を行う
+// 過去のピボットを参照するため、配列のインデックスに注意
+// [0]=最新確定(High or Low), [1]=前回, [2]=前々回...
+
+// --- 上昇5波 (Bull Impulse) 検出ロジック ---
+// 必要ピボット: Low(Start) -> High(1) -> Low(2) -> High(3) -> Low(4) -> High(5)
+// 配列上は逆順:
+// [0]=High(5)
+// [1]=Low(4)
+// [2]=High(3)
+// [3]=Low(2)
+// [4]=High(1)
+// [5]=Low(0) Start
+
+var string wave_label = na
+var int last_wave_idx = 0
+
+// 最新ピボットが確定したタイミングで判定
+bool pivot_confirmed = crossover or crossunder
+
+if pivot_confirmed and array.size(pivot_idx) >= 6
+    // --- 上昇5波のパターンチェック ---
+    if array.get(pivot_type, 0) == 1 // 最新がHigh (Wave 5候補)
+        // 価格情報の取得
+        h5 = array.get(pivot_price, 0)
+        l4 = array.get(pivot_price, 1)
+        h3 = array.get(pivot_price, 2)
+        l2 = array.get(pivot_price, 3)
+        h1 = array.get(pivot_price, 4)
+        l0 = array.get(pivot_price, 5)
+        
+        // インデックス情報の取得（重複描画防止用）
+        idx_h5 = array.get(pivot_idx, 0)
+        
+        // エリオット波動 基本ルールチェック
+        // 1. Wave 3 > Wave 1 (第3波は第1波の高値を超える: 一般的定義)
+        // 2. Wave 3 は最短ではない (ここでは簡易的に h3 > h1 を最低条件とする)
+        // 3. Wave 2 > Start (第2波は始点を割らない)
+        // 4. Wave 4 > Wave 2 (安値切り上げ)
+        // 5. Wave 4 != Wave 1 (第4波は第1波と重ならない: 厳密ルールだが、ここでは緩めるか選択。今回はHigh1 < Low4を推奨条件とするが、Cryptoでは重なることもあるため、一旦 Low4 > Low2 を必須とする)
+        // 6. Wave 5 > Wave 3 (第5波は高値更新)
+        
+        is_bull_wave = h3 > h1 and l2 > l0 and l4 > l2 and h5 > h3
+        
+        // 厳密なルール（W4がW1を割り込まない）を追加する場合:
+        // is_bull_wave := is_bull_wave and l4 > h1 
+        // 緩和ルール（W4はW1より上、もしくはW2よりかなり上）
+        
+        if is_bull_wave and idx_h5 != last_wave_idx
+            // ラベル描画
+            box.new(bar_index, h5, bar_index, h5, text="Wave 5!", text_color=color.lime, border_color=na, bgcolor=na) // Debug用
+            
+            // 過去に遡ってラベル付け
+            // label.new(array.get(pivot_idx, 5), l0, "0", color=color.gray, style=label.style_label_up, size=size.tiny)
+            label.new(array.get(pivot_idx, 4), h1, "①", color=color.lime, style=label.style_label_down, size=size.small, textcolor=color.white)
+            label.new(array.get(pivot_idx, 3), l2, "②", color=color.lime, style=label.style_label_up, size=size.small, textcolor=color.white)
+            label.new(array.get(pivot_idx, 2), h3, "③", color=color.lime, style=label.style_label_down, size=size.normal, textcolor=color.yellow)
+            label.new(array.get(pivot_idx, 1), l4, "④", color=color.lime, style=label.style_label_up, size=size.small, textcolor=color.white)
+            label.new(array.get(pivot_idx, 0), h5, "⑤", color=color.lime, style=label.style_label_down, size=size.large, textcolor=color.red)
+            
+            last_wave_idx := idx_h5
+            
+    // --- 下降5波 (Bear Impulse) 検出ロジック ---
+    // High(Start) -> Low(1) -> High(2) -> Low(3) -> High(4) -> Low(5)
+    // [0]=Low(5) ... [5]=High(0)
+    
+    if array.get(pivot_type, 0) == -1 // 最新がLow (Wave 5候補)
+        l5 = array.get(pivot_price, 0)
+        h4 = array.get(pivot_price, 1)
+        l3 = array.get(pivot_price, 2)
+        h2 = array.get(pivot_price, 3)
+        l1 = array.get(pivot_price, 4)
+        h0 = array.get(pivot_price, 5)
+        
+        idx_l5 = array.get(pivot_idx, 0)
+        
+        // ルール:
+        // L3 < L1 (安値更新)
+        // H2 < H0 (戻り高値切り下げ)
+        // H4 < H2
+        // L5 < L3
+        
+        is_bear_wave = l3 < l1 and h2 < h0 and h4 < h2 and l5 < l3
+        
+        if is_bear_wave and idx_l5 != last_wave_idx
+            // label.new(array.get(pivot_idx, 5), h0, "0", color=color.gray, style=label.style_label_down, size=size.tiny)
+            label.new(array.get(pivot_idx, 4), l1, "①", color=color.red, style=label.style_label_up, size=size.small, textcolor=color.white)
+            label.new(array.get(pivot_idx, 3), h2, "②", color=color.red, style=label.style_label_down, size=size.small, textcolor=color.white)
+            label.new(array.get(pivot_idx, 2), l3, "③", color=color.red, style=label.style_label_up, size=size.normal, textcolor=color.yellow)
+            label.new(array.get(pivot_idx, 1), h4, "④", color=color.red, style=label.style_label_down, size=size.small, textcolor=color.white)
+            label.new(array.get(pivot_idx, 0), l5, "⑤", color=color.red, style=label.style_label_up, size=size.large, textcolor=color.lime)
+            
+            last_wave_idx := idx_l5
+
+// ============================================================================
+// 描画: ZigZagライン
+// ============================================================================
+plot(sma, "Baseline SMA", color=color.new(color.gray, 50))
+
+if show_zig and array.size(pivot_idx) >= 2
+    // 最新確定ピボットと1つ前のピボットを線で結ぶ
+    // ※ 過去のラインを描画するのはline.newで都度行う
+    if pivot_confirmed
+        line.new(array.get(pivot_idx, 1), array.get(pivot_price, 1), 
+                 array.get(pivot_idx, 0), array.get(pivot_price, 0), 
+                 color=color.new(color.blue, 50), width=2)
+
+// 現在進行中の波（確定していないHigh/Low）へのライン
+if show_zig and barstate.islast
+    // 前回の確定値から最新のPeak価格へ
+    line.new(array.get(pivot_idx, 0), array.get(pivot_price, 0), 
+             peak_bar_index, peak_price, 
+             color=color.new(color.blue, 70), width=1, style=line.style_dashed)

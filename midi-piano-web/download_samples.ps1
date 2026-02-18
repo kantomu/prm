@@ -1,0 +1,22 @@
+$baseUrl = "https://tonejs.github.io/audio/salamander/"
+$files = @(
+    "A0.mp3", "C1.mp3", "Ds1.mp3", "Fs1.mp3", "A1.mp3", 
+    "C2.mp3", "Ds2.mp3", "Fs2.mp3", "A2.mp3", 
+    "C3.mp3", "Ds3.mp3", "Fs3.mp3", "A3.mp3", 
+    "C4.mp3", "Ds4.mp3", "Fs4.mp3", "A4.mp3", 
+    "C5.mp3", "Ds5.mp3", "Fs5.mp3", "A5.mp3", 
+    "C6.mp3", "Ds6.mp3", "Fs6.mp3", "A6.mp3", 
+    "C7.mp3", "Ds7.mp3", "Fs7.mp3", "A7.mp3", 
+    "C8.mp3"
+)
+
+$dest = "public/samples"
+if (!(Test-Path $dest)) { New-Item -ItemType Directory -Force -Path $dest }
+
+foreach ($file in $files) {
+    $url = "$baseUrl$file"
+    $out = "$dest/$file"
+    Write-Host "Downloading $file..."
+    Invoke-WebRequest -Uri $url -OutFile $out
+}
+Write-Host "Done."

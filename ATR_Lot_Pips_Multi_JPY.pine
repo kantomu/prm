@@ -1,0 +1,321 @@
+//@version=5
+indicator(title="ATR Lot Size & Pips Calculator (Advanced Multi-Scenario JPY Account)", shorttitle="ATR Lot/Pips Multi JPY", overlay=true)
+
+//用: ATR Lot Size & Pips Calculator (Advanced Multi-Scenario JPY Account)
+//Ver: 5.0
+//Date: 2026-01-17
+
+//------------------------------------------------------------------------------
+// 1. Settings & Inputs
+//------------------------------------------------------------------------------
+
+// --- Asset Checker ---
+bool isForex = syminfo.type == "forex"
+bool isCrypto = syminfo.type == "crypto"
+bool isGold = syminfo.basecurrency == "XAU" or str.contains(syminfo.root, "XAU") or str.contains(syminfo.root, "GOLD")
+bool isSilver = syminfo.basecurrency == "XAG" or str.contains(syminfo.root, "XAG") or str.contains(syminfo.root, "SILVER")
+bool isIndex = (syminfo.type == "index" or syminfo.type == "cfd") and not isGold and not isSilver // Approximate
+string account_currency = "JPY" // Fixed to JPY
+
+// --- ATR Settings ---
+grp_atr = "ATR Settings"
+length = input.int(title="ATR Length", defval=14, minval=1, group=grp_atr)
+smoothing = input.string(title="ATR Smoothing", defval="RMA", options=["RMA", "SMA", "EMA", "WMA"], group=grp_atr)
+
+// --- Risk Management Settings ---
+grp_risk = "Risk Management"
+total_capital_input = input.float(title="総資産額", defval=100.0, minval=0.01, group=grp_risk, tooltip="口座の実質残高を入力")
+total_capital_unit = input.string(title="総資産額の単位", defval="万円", options=["円", "万円"], group=grp_risk)
+
+lot_currency_amount_input = input.float(title="1ロットの単位数(Contract Size)", defval=10.0, minval=0.01, group=grp_risk, tooltip="Forex: 10(万) or 100,000. Gold: 100oz etc. Indices: 1, 10, etc.")
+lot_currency_amount_unit = input.string(title="単位倍率", defval="万通貨 (x10000)", options=["x1 (Raw/Contract)", "万通貨 (x10000)"], group=grp_risk, inline="lot_unit")
+
+spread_pips = input.float(title="スプレッド (Pips/Points)", defval=0.5, minval=0.0, group=grp_risk)
+commission_amount_input = input.float(title="1ロットの手数料", defval=0.0, minval=0.0, group=grp_risk)
+commission_unit = input.string(title="手数料の単位", defval="円", options=["円", "ドル"], group=grp_risk)
+
+risk_percentage = input.float(title="許容損失率 (%)", defval=1.0, minval=0.01, maxval=100.0, group=grp_risk)
+
+// --- Muti-Scenario Settings ---
+grp_multi = "Multi-Scenario (SL/TP Levels)"
+// Scenario 1 (Conservative - Far)
+multiplier_1 = input.float(title="Scenario 1 Ratio (xATR)", defval=3.0, minval=0.1, group=grp_multi, inline="s1")
+color_line_1 = input.color(title="Line Color", defval=color.new(#50bb59, 30), group=grp_multi, inline="s1")
+show_line_1 = input.bool(title="Show", defval=true, group=grp_multi, inline="s1")
+
+// Scenario 2
+multiplier_2 = input.float(title="Scenario 2 Ratio (xATR)", defval=2.5, minval=0.1, group=grp_multi, inline="s2")
+color_line_2 = input.color(title="Line Color", defval=color.new(#80deea, 30), group=grp_multi, inline="s2")
+show_line_2 = input.bool(title="Show", defval=true, group=grp_multi, inline="s2")
+
+// Scenario 3 (Normal)
+multiplier_3 = input.float(title="Scenario 3 Ratio (xATR)", defval=2.0, minval=0.1, group=grp_multi, inline="s3")
+color_line_3 = input.color(title="Line Color", defval=color.new(#ffffff, 30), group=grp_multi, inline="s3")
+show_line_3 = input.bool(title="Show", defval=true, group=grp_multi, inline="s3")
+
+// Scenario 4
+multiplier_4 = input.float(title="Scenario 4 Ratio (xATR)", defval=1.5, minval=0.1, group=grp_multi, inline="s4")
+color_line_4 = input.color(title="Line Color", defval=color.new(#ffcc80, 30), group=grp_multi, inline="s4")
+show_line_4 = input.bool(title="Show", defval=true, group=grp_multi, inline="s4")
+
+// Scenario 5 (Aggressive - Tight)
+multiplier_5 = input.float(title="Scenario 5 Ratio (xATR)", defval=1.0, minval=0.1, group=grp_multi, inline="s5")
+color_line_5 = input.color(title="Line Color", defval=color.new(#ef9a9a, 30), group=grp_multi, inline="s5")
+show_line_5 = input.bool(title="Show", defval=true, group=grp_multi, inline="s5")
+
+// --- Visual Settings ---
+grp_vis = "Visual Settings"
+line_width = input.int(title="SL/TP Line Width", defval=2, minval=1, group=grp_vis)
+line_length = input.int(title="Label Offset (Bars)", defval=0, minval=0, group=grp_vis) // Reduced default to 0 (Overlap)
+
+// Partial Lot Settings - Multiple Choice
+// ... (skip lines)
+
+
+// Users can select any combination, display will append them.
+show_part_half = input.bool(title="Show 1/2 Lot", defval=false, group=grp_vis, inline="p1")
+show_part_third = input.bool(title="Show 1/3 Lot", defval=false, group=grp_vis, inline="p1")
+show_part_twothird = input.bool(title="Show 2/3 Lot", defval=false, group=grp_vis, inline="p2")
+
+// Smart Formatting Function
+// Logic: "Detected top digit ... 2 places BELOW that" (Approx 3 Sig Figs for >1, more for <1)
+// Formula: decimals = 2 - magnitude
+// e.g. 10.50 (mag 1) -> 2-1 = 1 dec -> "10.5"
+// e.g. 1.2345 (mag 0) -> 2-0 = 2 dec -> "1.23"
+// e.g. 0.2345 (mag -1) -> 2-(-1) = 3 dec -> "0.234"
+// e.g. 0.0123 (mag -2) -> 2-(-2) = 4 dec -> "0.0123"
+format_smart(float val) =>
+    if val == 0
+        "0"
+    else
+        // Determine Magnitude (log10)
+        float abs_val = math.abs(val)
+        float mag = math.floor(math.log10(abs_val))
+        
+        // Calculate needed decimal places: 2 - mag (User requested specific precision)
+        int decimals = math.max(0, int(2 - mag))
+        
+        // Round to that precision
+        float factor = math.pow(10, decimals)
+        float rounded = math.round(val * factor) / factor
+        
+        // Format to string (Max 6 decimals to allow for small numbers, but strip trailing)
+        str.tostring(rounded, "#.######")
+
+// Helper function to format Lot String with Partial
+// Can display up to 4 items: Main (1/2, 1/3, 2/3)
+// Format: MainL / 1/2: L / 1/3: L ... 
+// Simplified per request: "0.333L / 0.111L" style
+format_lot_string(float lots) =>
+    string main_str = format_smart(lots) + "L"
+    string part_str = ""
+    
+    // Accumulate parts with suffixes
+    // Descending Order: 2/3 -> 1/2 -> 1/3
+    if show_part_twothird
+        part_str := part_str + " / " + format_smart(lots * (2.0/3.0)) + "L"
+
+    if show_part_half
+        part_str := part_str + " / " + format_smart(lots * 0.5) + "L"
+
+    if show_part_third
+        part_str := part_str + " / " + format_smart(lots * (1.0/3.0)) + "L"
+
+    main_str + part_str
+
+
+//------------------------------------------------------------------------------
+// 2. Calculations
+//------------------------------------------------------------------------------
+
+// --- ATR Calculation ---
+ma_function(source, length) =>
+    switch smoothing
+        "RMA" => ta.rma(source, length)
+        "SMA" => ta.sma(source, length)
+        "EMA" => ta.ema(source, length)
+        => ta.wma(source, length)
+
+atr_value = ma_function(ta.tr(true), length)
+
+// --- Pips Normalization ---
+// Forex: JPY=0.01, Others=0.0001
+// Non-Forex: Default 1.0 (Points)
+var float pips_multiplier_base = na
+var string unit_label = "p"
+
+if isForex 
+    if syminfo.currency == "JPY" or syminfo.basecurrency == "JPY" 
+        pips_multiplier_base := 0.01 
+        unit_label := "p"
+    else
+        pips_multiplier_base := 0.0001
+        unit_label := "p"
+else if isGold or isSilver
+    pips_multiplier_base := 1.0 // Use $1.0 as the unit for display clarity (e.g. ATR $20.00)
+    unit_label := "pts"
+else
+    // Non-Forex logic: Default to 1.0 (Price Change)
+    pips_multiplier_base := 1.0
+    unit_label := "pts"
+
+atr_in_pips_base = not na(pips_multiplier_base) and pips_multiplier_base > 0 ? atr_value / pips_multiplier_base : 0.0
+
+// --- Financial Conversions ---
+// Convert inputs to raw numbers
+float total_capital_converted = total_capital_unit == "万円" ? total_capital_input * 10000.0 : total_capital_input
+// Handle Unit Size: Only apply x10000 multiplier to Forex pairs. For others, use raw input (usually 1, 10, 100).
+float lot_multiplier = (isForex and lot_currency_amount_unit == "万通貨 (x10000)") ? 10000.0 : 1.0
+float lot_currency_amount_converted = lot_currency_amount_input * lot_multiplier
+
+// GOLD Override: If Gold detected and used default input (10.0), assume Standard Lot (100oz)
+if isGold and lot_currency_amount_converted == 10.0
+    lot_currency_amount_converted := 100.0
+
+// SILVER Override: If Silver detected and used default input (10.0), assume Standard Lot (5000oz)
+if isSilver and lot_currency_amount_converted == 10.0
+    lot_currency_amount_converted := 5000.0
+
+// --- Quote Currency to JPY Rate ---
+string quote_currency = syminfo.currency 
+
+// Pre-fetch all rates globally
+float r_usdjpy = request.security("USDJPY", timeframe.period, close, ignore_invalid_symbol=true)
+float r_eurjpy = request.security("EURJPY", timeframe.period, close, ignore_invalid_symbol=true)
+float r_gbpjpy = request.security("GBPJPY", timeframe.period, close, ignore_invalid_symbol=true)
+float r_audjpy = request.security("AUDJPY", timeframe.period, close, ignore_invalid_symbol=true)
+float r_cadjpy = request.security("CADJPY", timeframe.period, close, ignore_invalid_symbol=true)
+float r_chfjpy = request.security("CHFJPY", timeframe.period, close, ignore_invalid_symbol=true)
+float r_nzdjpy = request.security("NZDJPY", timeframe.period, close, ignore_invalid_symbol=true)
+
+// Calculate commission in JPY
+float usdjpy_safe = not na(r_usdjpy) ? r_usdjpy : 150.0 
+float commission_converted_jpy = commission_unit == "ドル" ? commission_amount_input * usdjpy_safe : commission_amount_input
+
+// Calculate Total Risk Amount (JPY)
+float risk_amount_total_jpy = total_capital_converted * (risk_percentage / 100.0)
+
+// --- Universal Conversion Logic ---
+var float conversion_rate_quote_to_jpy = na
+
+if quote_currency == account_currency
+    conversion_rate_quote_to_jpy := 1.0
+else if quote_currency == "USD"
+    conversion_rate_quote_to_jpy := r_usdjpy 
+else if quote_currency == "EUR"
+    conversion_rate_quote_to_jpy := r_eurjpy
+else if quote_currency == "GBP"
+    conversion_rate_quote_to_jpy := r_gbpjpy
+else if quote_currency == "AUD"
+    conversion_rate_quote_to_jpy := r_audjpy
+else if quote_currency == "CAD"
+    conversion_rate_quote_to_jpy := r_cadjpy
+else if quote_currency == "CHF"
+    conversion_rate_quote_to_jpy := r_chfjpy
+else if quote_currency == "NZD"
+    conversion_rate_quote_to_jpy := r_nzdjpy
+else
+    // Fallback: Default to USDJPY as proxy if unknown (most commodities/indices are USD based)
+    conversion_rate_quote_to_jpy := r_usdjpy
+
+// --- Cost Analysis ---
+float cost_factor_pips = pips_multiplier_base * conversion_rate_quote_to_jpy
+float cost_commission_per_lot = commission_converted_jpy 
+
+float value_per_pip_per_lot = cost_factor_pips * lot_currency_amount_converted
+float spread_cost_per_lot = spread_pips * value_per_pip_per_lot
+float total_fixed_cost_per_lot = spread_cost_per_lot + cost_commission_per_lot
+
+calc_scenario(mult) =>
+    float dist_pips = atr_in_pips_base * mult
+    float stop_loss_cost_per_lot = dist_pips * value_per_pip_per_lot
+    float total_risk_per_lot = stop_loss_cost_per_lot + total_fixed_cost_per_lot
+    float lots = risk_amount_total_jpy / total_risk_per_lot
+    [dist_pips, lots]
+
+[pips_1, lots_1] = calc_scenario(multiplier_1)
+[pips_2, lots_2] = calc_scenario(multiplier_2)
+[pips_3, lots_3] = calc_scenario(multiplier_3)
+[pips_4, lots_4] = calc_scenario(multiplier_4)
+[pips_5, lots_5] = calc_scenario(multiplier_5)
+
+// Helper lines
+var line l_up_1 = na, var line l_dn_1 = na
+var line l_up_2 = na, var line l_dn_2 = na
+var line l_up_3 = na, var line l_dn_3 = na
+var line l_up_4 = na, var line l_dn_4 = na
+var line l_up_5 = na, var line l_dn_5 = na
+
+var label lbl_up_1 = na, var label lbl_dn_1 = na
+var label lbl_up_2 = na, var label lbl_dn_2 = na
+var label lbl_up_3 = na, var label lbl_dn_3 = na
+var label lbl_up_4 = na, var label lbl_dn_4 = na
+var label lbl_up_5 = na, var label lbl_dn_5 = na
+
+
+// --- Smart Visual Settings ---
+// grp_vis
+hide_tp_on_trend = input.bool(title="SMA200順張り時、利確ラインを隠す", defval=true, group=grp_vis, tooltip="SMA200が上向きなら上のライン(利確側)を非表示。下向きなら下を非表示。")
+sma_trend_len = input.int(title="Trend SMA Length", defval=200, group=grp_vis)
+
+// Calculate Trend
+float sma_trend = ta.sma(close, sma_trend_len)
+bool is_trend_up = sma_trend > sma_trend[1]
+
+// Helper function for line drawing (Modified)
+draw_line_label(bool show, float mult, float pips, float lots, color col, string name, int extend_bars, string unit_label) =>
+    if show
+        float up_level = close + (atr_value * mult)
+        float dn_level = close - (atr_value * mult)
+        
+        // Smart Hide Logic
+        bool hide_up = hide_tp_on_trend and is_trend_up
+        bool hide_dn = hide_tp_on_trend and not is_trend_up
+        
+        // Format
+        string lots_part = format_lot_string(lots)
+        string DASH = "ーー " 
+        string txt_full = DASH + format_smart(pips) + unit_label + " / " + lots_part
+        string txt_blind = DASH // Show only dash for TP side
+        
+        // Determine Text
+        string t_up = hide_up ? txt_blind : txt_full
+        string t_dn = hide_dn ? txt_blind : txt_full
+        
+        label lbl_up = label.new(bar_index + extend_bars, up_level, text=t_up, color=color(na), textcolor=col, style=label.style_label_left, size=size.small)
+        label lbl_dn = label.new(bar_index + extend_bars, dn_level, text=t_dn, color=color(na), textcolor=col, style=label.style_label_left, size=size.small)
+
+        [line(na), line(na), lbl_up, lbl_dn]
+    else
+        [line(na), line(na), label(na), label(na)]
+
+if barstate.islast
+    line.delete(l_up_1), line.delete(l_dn_1)
+    line.delete(l_up_2), line.delete(l_dn_2)
+    line.delete(l_up_3), line.delete(l_dn_3)
+    line.delete(l_up_4), line.delete(l_dn_4)
+    line.delete(l_up_5), line.delete(l_dn_5)
+    
+    label.delete(lbl_up_1), label.delete(lbl_dn_1)
+    label.delete(lbl_up_2), label.delete(lbl_dn_2)
+    label.delete(lbl_up_3), label.delete(lbl_dn_3)
+    label.delete(lbl_up_4), label.delete(lbl_dn_4)
+    label.delete(lbl_up_5), label.delete(lbl_dn_5)
+
+    int extend_bars_val = line_length
+
+    [l1u, l1d, lb1u, lb1d] = draw_line_label(show_line_1, multiplier_1, pips_1, lots_1, color_line_1, "S1", extend_bars_val, unit_label)
+    [l2u, l2d, lb2u, lb2d] = draw_line_label(show_line_2, multiplier_2, pips_2, lots_2, color_line_2, "S2", extend_bars_val, unit_label)
+    [l3u, l3d, lb3u, lb3d] = draw_line_label(show_line_3, multiplier_3, pips_3, lots_3, color_line_3, "S3", extend_bars_val, unit_label)
+    [l4u, l4d, lb4u, lb4d] = draw_line_label(show_line_4, multiplier_4, pips_4, lots_4, color_line_4, "S4", extend_bars_val, unit_label)
+    [l5u, l5d, lb5u, lb5d] = draw_line_label(show_line_5, multiplier_5, pips_5, lots_5, color_line_5, "S5", extend_bars_val, unit_label)
+    
+    // Assign to state vars for persistency
+    l_up_1 := l1u, l_dn_1 := l1d, lbl_up_1 := lb1u, lbl_dn_1 := lb1d
+    l_up_2 := l2u, l_dn_2 := l2d, lbl_up_2 := lb2u, lbl_dn_2 := lb2d
+    l_up_3 := l3u, l_dn_3 := l3d, lbl_up_3 := lb3u, lbl_dn_3 := lb3d
+    l_up_4 := l4u, l_dn_4 := l4d, lbl_up_4 := lb4u, lbl_dn_4 := lb4d
+    l_up_5 := l5u, l_dn_5 := l5d, lbl_up_5 := lb5u, lbl_dn_5 := lb5d
+
+
+// (Table Removed)

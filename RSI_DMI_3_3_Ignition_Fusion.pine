@@ -1,0 +1,202 @@
+// This Pine Script® code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// © Kantomu_CA
+//@version=6
+indicator("3-3 Wave Ignition Oscillator (Pro) + RSI DMI Hybrid Fusion", shorttitle="Fusion_3-3_RSI_DMI", overlay=false)
+
+// -------------------------------------------------------------------------
+// INPUTS & SETTINGS
+// -------------------------------------------------------------------------
+// --- Group: RSI Settings ---
+GRP1 = "RSI Settings"
+rsiLengthInput = input.int(14, minval=1, title="RSI Length", group=GRP1)
+rsiSourceInput = input.source(close, "Source", group=GRP1)
+
+// --- Group: DMI/ADX Settings ---
+GRP2 = "DMI/ADX Settings"
+dmiLen = input.int(14, title="DMI/ADX Length", group=GRP2)
+dmiSmooth = input.int(5, title="DI Smoothing (SMA)", group=GRP2)
+
+// --- Group: 3-3 Wave Ignition Settings ---
+GRP_IG = "3-3 Wave Ignition Settings (Footprint)"
+numTicksInput = input.int(100, "Ticks per footprint row", group=GRP_IG) 
+vaInput = input.int(70, "Value Area percentage", group=GRP_IG)
+// User requirement: SMA 12 fixed/default for Signal
+maTypeIgnition = input.string("SMA", "Oscillator MA Type", options=["SMA", "EMA"], group=GRP_IG)
+smoothingIgnition = input.int(12, "Oscillator Smoothing Length", minval=1, group=GRP_IG)
+
+// --- Group: Signal Settings ---
+GRP_SIG = "Fusion Signal Settings"
+showSignals = input.bool(true, "Show Fusion Signals", group=GRP_SIG)
+colorLong = input.color(color.lime, "Long Signal Color", group=GRP_SIG)
+colorShort = input.color(color.red, "Short Signal Color", group=GRP_SIG)
+
+// --- Group: Precision Filters (5M Scalping) ---
+GRP_FILT = "🎯 Precision Filters (5M Scalping)"
+
+// Filter 1: ADX Rising
+useAdxRisingFilter = input.bool(true, "① ADX上昇フィルター", group=GRP_FILT, tooltip="ADXが上昇中（トレンド加速）のときのみシグナル発生")
+
+// Filter 2: RSI Extreme Zone
+useRsiExtremeFilter = input.bool(true, "② RSI極端ゾーン確認", group=GRP_FILT, tooltip="ロング: RSI<閾値, ショート: RSI>閾値")
+rsiOversold = input.int(35, "   RSI売られすぎ閾値 (Long)", minval=10, maxval=50, group=GRP_FILT)
+rsiOverbought = input.int(65, "   RSI買われすぎ閾値 (Short)", minval=50, maxval=90, group=GRP_FILT)
+
+// Filter 3: Delta Threshold
+useDeltaThreshold = input.bool(true, "③ デルタ閾値フィルター", group=GRP_FILT, tooltip="Delta Ratioが最小値以上のときのみ点火")
+minDeltaRatio = input.float(10.0, "   最小Delta Ratio (%)", minval=1.0, step=1.0, group=GRP_FILT)
+
+// Filter 4: Candle Size (ATR based)
+useCandleSizeFilter = input.bool(true, "④ ローソク足サイズフィルター", group=GRP_FILT, tooltip="シグナル足の実体がATRの一定割合以上")
+atrLength = input.int(14, "   ATR期間", minval=1, group=GRP_FILT)
+minCandleAtrRatio = input.float(0.5, "   最小ATR倍率", minval=0.1, step=0.1, group=GRP_FILT)
+
+// Filter 5: Cooldown Period
+useCooldownFilter = input.bool(true, "⑤ クールダウン期間", group=GRP_FILT, tooltip="同方向シグナル後N本間は抑制")
+cooldownBars = input.int(5, "   クールダウン本数", minval=1, group=GRP_FILT)
+
+// -------------------------------------------------------------------------
+// LOGIC: RSI + DMI Hybrid (Trend Context)
+// -------------------------------------------------------------------------
+// 1. RSI
+rsi = ta.rsi(rsiSourceInput, rsiLengthInput)
+
+// 2. DMI/ADX
+[rawPlus, rawMinus, adx] = ta.dmi(dmiLen, dmiLen)
+smoothedPlus = ta.sma(rawPlus, dmiSmooth)
+smoothedMinus = ta.sma(rawMinus, dmiSmooth)
+
+// Trend Context Definition
+// "Background Light Red" means Bear Trend (DI+ < DI-)
+// "Background Light Green" means Bull Trend (DI+ > DI-)
+isDmiBull = smoothedPlus > smoothedMinus
+isDmiBear = smoothedPlus <= smoothedMinus
+
+// History Check: Current bar + past 2 bars must maintain the trend
+// User Requirement: Background must be continuing for 3 times or more.
+// Checking bars [0], [1], [2] (current, 1 bar ago, 2 bars ago)
+trendBearContext = isDmiBear and isDmiBear[1] and isDmiBear[2]
+trendBullContext = isDmiBull and isDmiBull[1] and isDmiBull[2]
+
+// -------------------------------------------------------------------------
+// LOGIC: 3-3 Wave Ignition (Trigger)
+// -------------------------------------------------------------------------
+footprint reqFootprint = request.footprint(numTicksInput, vaInput)
+
+[delta, totalVol] = if not na(reqFootprint)
+    [reqFootprint.delta(), reqFootprint.total_volume()]
+else
+    [0.0, 0.0]
+
+deltaRatio = totalVol != 0 ? (delta / totalVol) * 100 : 0
+
+// Smoothing (SMA 12 per request)
+smoothedDelta = switch maTypeIgnition
+    "SMA" => ta.sma(deltaRatio, smoothingIgnition)
+    "EMA" => ta.ema(deltaRatio, smoothingIgnition)
+    => ta.ema(deltaRatio, smoothingIgnition)
+
+// Ignition Logic
+// Bull Ignition: Delta Ratio > Highest of last 10, Candle Up
+isBullIgn = deltaRatio > ta.highest(deltaRatio[1], 10) and close > open
+// Bear Ignition: Delta Ratio < Lowest of last 10, Candle Down
+isBearIgn = deltaRatio < ta.lowest(deltaRatio[1], 10) and close < open
+
+// Strong Signal Condition (Histogram Color + Background Color in original 3-3)
+longTrigger = isBullIgn
+shortTrigger = isBearIgn
+
+// -------------------------------------------------------------------------
+// PRECISION FILTERS LOGIC
+// -------------------------------------------------------------------------
+// Filter 1: ADX Rising
+adxRising = adx > adx[1]
+passAdxFilter = useAdxRisingFilter ? adxRising : true
+
+// Filter 2: RSI Extreme Zone
+rsiInOversold = rsi < rsiOversold
+rsiInOverbought = rsi > rsiOverbought
+passRsiLongFilter = useRsiExtremeFilter ? rsiInOversold : true
+passRsiShortFilter = useRsiExtremeFilter ? rsiInOverbought : true
+
+// Filter 3: Delta Threshold
+passDeltaLongFilter = useDeltaThreshold ? (deltaRatio >= minDeltaRatio) : true
+passDeltaShortFilter = useDeltaThreshold ? (deltaRatio <= -minDeltaRatio) : true
+
+// Filter 4: Candle Size (ATR based)
+atrValue = ta.atr(atrLength)
+candleBody = math.abs(close - open)
+passCandleSizeFilter = useCandleSizeFilter ? (candleBody >= atrValue * minCandleAtrRatio) : true
+
+// Filter 5: Cooldown Period
+var int barsSinceLastLong = 999
+var int barsSinceLastShort = 999
+barsSinceLastLong := barsSinceLastLong + 1
+barsSinceLastShort := barsSinceLastShort + 1
+
+passCooldownLong = useCooldownFilter ? (barsSinceLastLong > cooldownBars) : true
+passCooldownShort = useCooldownFilter ? (barsSinceLastShort > cooldownBars) : true
+
+// -------------------------------------------------------------------------
+// FUSION LOGIC: Trend Reversal Entry (with All Filters)
+// -------------------------------------------------------------------------
+// Long: Bear Context (Light Red x3) + Bull Ignition (Green/Strong Buy) + All Filters
+signalLongRaw = trendBearContext and longTrigger and passAdxFilter and passRsiLongFilter and passDeltaLongFilter and passCandleSizeFilter and passCooldownLong
+
+// Short: Bull Context (Light Green x3) + Bear Ignition (Red/Strong Sell) + All Filters
+signalShortRaw = trendBullContext and shortTrigger and passAdxFilter and passRsiShortFilter and passDeltaShortFilter and passCandleSizeFilter and passCooldownShort
+
+// Update cooldown counters
+if signalLongRaw
+    barsSinceLastLong := 0
+if signalShortRaw
+    barsSinceLastShort := 0
+
+// Final signals
+signalLong = signalLongRaw
+signalShort = signalShortRaw
+
+// -------------------------------------------------------------------------
+// PLOTTING
+// -------------------------------------------------------------------------
+// Plot DMI Background for Reference (Transparent)
+fillColor = isDmiBull ? color.new(color.green, 90) : color.new(color.red, 90)
+bgcolor(fillColor, title="RSI/DMI Trend Context")
+
+// Plot 3-3 Oscillator
+oscColor = deltaRatio > 0 ? (isBullIgn ? color.lime : color.green) : (isBearIgn ? color.maroon : color.red)
+plot(smoothedDelta, "3-3 Oscillator", color=oscColor, style=plot.style_columns)
+plot(0, "Zero Line", color=color.new(color.white, 50))
+
+// Plot Signals
+plotshape(signalLong and showSignals, title="Fusion Long", style=shape.triangleup, location=location.bottom, color=colorLong, size=size.small, text="PRO LONG", textcolor=color.white)
+plotshape(signalShort and showSignals, title="Fusion Short", style=shape.triangledown, location=location.top, color=colorShort, size=size.small, text="PRO SHORT", textcolor=color.white)
+
+// -------------------------------------------------------------------------
+// DEBUG: Filter Status Table (Optional)
+// -------------------------------------------------------------------------
+var table filterTable = table.new(position.top_right, 2, 6, bgcolor=color.new(color.black, 80), border_width=1)
+
+if barstate.islast
+    table.cell(filterTable, 0, 0, "Filter", text_color=color.white, text_size=size.tiny)
+    table.cell(filterTable, 1, 0, "Status", text_color=color.white, text_size=size.tiny)
+    
+    table.cell(filterTable, 0, 1, "① ADX Rising", text_color=color.white, text_size=size.tiny)
+    table.cell(filterTable, 1, 1, useAdxRisingFilter ? (passAdxFilter ? "✅" : "❌") : "OFF", text_color=passAdxFilter ? color.lime : color.red, text_size=size.tiny)
+    
+    table.cell(filterTable, 0, 2, "② RSI Extreme", text_color=color.white, text_size=size.tiny)
+    table.cell(filterTable, 1, 2, useRsiExtremeFilter ? (rsiInOversold ? "OS" : rsiInOverbought ? "OB" : "—") : "OFF", text_color=color.yellow, text_size=size.tiny)
+    
+    table.cell(filterTable, 0, 3, "③ Delta Thres", text_color=color.white, text_size=size.tiny)
+    table.cell(filterTable, 1, 3, useDeltaThreshold ? str.tostring(deltaRatio, "#.#") + "%" : "OFF", text_color=math.abs(deltaRatio) >= minDeltaRatio ? color.lime : color.gray, text_size=size.tiny)
+    
+    table.cell(filterTable, 0, 4, "④ Candle Size", text_color=color.white, text_size=size.tiny)
+    table.cell(filterTable, 1, 4, useCandleSizeFilter ? (passCandleSizeFilter ? "✅" : "❌") : "OFF", text_color=passCandleSizeFilter ? color.lime : color.red, text_size=size.tiny)
+    
+    table.cell(filterTable, 0, 5, "⑤ Cooldown", text_color=color.white, text_size=size.tiny)
+    table.cell(filterTable, 1, 5, useCooldownFilter ? str.tostring(math.min(barsSinceLastLong, barsSinceLastShort)) + "/" + str.tostring(cooldownBars) : "OFF", text_color=color.aqua, text_size=size.tiny)
+
+// -------------------------------------------------------------------------
+// ALERTS
+// -------------------------------------------------------------------------
+alertcondition(signalLong, title="Fusion Long Signal", message="🚀 Fusion Long: Bear Trend Exhaustion + Bull Ignition Detected!")
+alertcondition(signalShort, title="Fusion Short Signal", message="⚠️ Fusion Short: Bull Trend Exhaustion + Bear Ignition Detected!")

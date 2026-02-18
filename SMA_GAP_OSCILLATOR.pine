@@ -1,0 +1,88 @@
+//@version=5
+indicator("SMA Gap Unit Oscillator", overlay=false)
+
+// ============================================================================
+// 設定
+// ============================================================================
+len_50  = input.int(50, "SMA 1 期間", minval=1)
+len_75  = input.int(75, "SMA 2 期間", minval=1)
+alert_th = input.float(2.0, "行き過ぎライン (単位)", minval=0.5, step=0.1, tooltip="SMA幅の何倍乖離したら警告するか")
+
+// ============================================================================
+// 計算ロジック
+// ============================================================================
+
+// 1. SMAの計算
+sma50 = ta.sma(close, len_50)
+sma75 = ta.sma(close, len_75)
+
+// 2. 基準値幅 (Base Width) = SMA間の距離
+// これを「1単位」とする
+sma_gap = math.abs(sma50 - sma75)
+
+// 3. 基準点 (Midpoint) = SMAの中間地点
+sma_mid = (sma50 + sma75) / 2.0
+
+// 4. 現在値の乖離
+// 基準点からの距離
+price_dist = close - sma_mid
+
+// 5. ユニット化 (Gap Unit)
+// 乖離 ÷ 基準値幅
+// 例: Gapが10円、現在値が基準点から20円離れていたら、スコアは2.0
+// Gapが0に近い場合（クロス時）は計算不可になるため、極小値で保護
+oscillator_val = sma_gap > 0 ? price_dist / sma_gap : 0
+
+// ============================================================================
+// 描画
+// ============================================================================
+// 0ライン (基準点 = SMAの中間)
+hline(0, "Midpoint", color=color.gray)
+
+// ±0.5ライン (SMAの位置)
+// Oscillatorが0.5なら片方のSMA上、-0.5ならもう片方のSMA上にいることになる
+// (MidpointからGapの0.5倍離れている = SMAの位置)
+h_p05 = hline( 0.5, "+0.5 (Upper SMA)", color=color.new(color.gray, 50), linestyle=hline.style_dotted)
+h_m05 = hline(-0.5, "-0.5 (Lower SMA)", color=color.new(color.gray, 50), linestyle=hline.style_dotted)
+
+// ±1.0ライン (SMA幅の1倍外側)
+h_p10 = hline( 1.0, "+1.0 Unit", color=color.new(color.orange, 50))
+h_m10 = hline(-1.0, "-1.0 Unit", color=color.new(color.orange, 50))
+
+// ±alert_th ライン (動的警告ライン)
+// hlineは定数しか受け付けないのでplotで描画
+plot(alert_th,  "Upper Alert Level", color=color.new(color.red, 50), style=plot.style_stepline)
+plot(-alert_th, "Lower Alert Level", color=color.new(color.red, 50), style=plot.style_stepline)
+
+// メインプロット
+// 色: 値が大きいほど濃い色に
+col_osc = oscillator_val > 0 ? 
+  color.from_gradient(oscillator_val, 0, alert_th + 1.0, color.green, color.lime) : 
+  color.from_gradient(oscillator_val, -alert_th - 1.0, 0, color.red, color.maroon)
+
+plot(oscillator_val, "SMA Gap Unit", color=col_osc, style=plot.style_columns)
+plot(oscillator_val, "Line", color=color.white, linewidth=1)
+
+// ============================================================================
+// 背景色による異常検知 (Extreme Alert)
+// ============================================================================
+// ±2.0を超えた場合に背景色を変更して警告
+is_extreme_high = oscillator_val >= alert_th
+is_extreme_low  = oscillator_val <= -alert_th
+
+bgcolor(is_extreme_high ? color.new(color.red, 80) : na, title="売られすぎ背景")
+bgcolor(is_extreme_low  ? color.new(color.lime, 80) : na, title="買われすぎ背景")
+
+// ============================================================================
+// 情報表示
+// ============================================================================
+// 現在の状態をラベル表示
+// var label info_lbl = label.new(bar_index, oscillator_val, style=label.style_none, textcolor=color.white)
+// label.set_xy(info_lbl, bar_index, oscillator_val)
+// label.set_text(info_lbl, str.tostring(oscillator_val, "#.##") + " Units")
+
+// ============================================================================
+// アラート
+// ============================================================================
+alertcondition(ta.crossover(oscillator_val, alert_th),   title="上方乖離警戒", message="SMA Gap Unit: 警戒ライン到達（買われすぎ警戒）")
+alertcondition(ta.crossunder(oscillator_val, -alert_th), title="下方乖離警戒", message="SMA Gap Unit: 警戒ライン到達（売られすぎ警戒）")

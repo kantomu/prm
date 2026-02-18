@@ -1,0 +1,130 @@
+//@version=5
+indicator("ZigZag Density Indicator", overlay=true, max_bars_back=5000)
+
+// ============================================================================
+// 設定
+// ============================================================================
+group_zz = "ZigZag設定"
+depth     = input.int(12, "Depth",     minval=1, group=group_zz)
+deviation = input.float(0.5, "Deviation (%)", minval=0.1, step=0.1, group=group_zz, tooltip="反転とみなす最小変動率。株/仮想通貨なら3-5%、為替なら0.5-1%程度が目安")
+backstep  = input.int(2,  "Backstep",  minval=2, group=group_zz)
+
+group_dens = "密度検知設定"
+check_period = input.int(100, "監視期間 (Bars)", minval=10, group=group_dens)
+vertex_count = input.int(7,   "頂点数しきい値",   minval=2,  group=group_dens)
+bg_color     = input.color(color.new(color.yellow, 80), "背景色", group=group_dens)
+show_count   = input.bool(true,  "頂点数をラベル表示 (Debug)", group=group_dens)
+
+// ============================================================================
+// ZigZagロジック (Robust Manual Implementation)
+// ============================================================================
+// TradingViewのZigZagに近い挙動を再現
+
+var float last_h = high
+var float last_l = low
+var int dir = 0 // 1 = 上昇(Highへ向かう), -1 = 下降(Lowへ向かう)
+
+// ピボット情報を格納する配列 (最新順)
+var pivot_idx   = array.new_int(0)
+var pivot_price = array.new_float(0)
+var pivot_dir   = array.new_int(0) // 1=High, -1=Low
+
+// 初期化
+if barstate.isfirst
+    dir := 1 
+    array.push(pivot_idx, bar_index)
+    array.push(pivot_price, low)
+    array.push(pivot_dir, -1)
+
+// Highest/Lowest within Depth
+ph = ta.highest(high, depth)
+pl = ta.lowest(low, depth)
+
+bool is_ph = high == ph
+bool is_pl = low == pl
+
+// 直近のポイント
+last_idx   = array.get(pivot_idx, 0)
+last_price = array.get(pivot_price, 0)
+last_type  = array.get(pivot_dir, 0)
+
+bool confirmed = false
+
+// 偏差（Deviation）チェック用関数
+// 現在値が直近極値から deviation % 以上離れているか
+f_dev_check(float current, float last, float threshold_pct) =>
+    math.abs(current - last) / last * 100 >= threshold_pct
+
+if last_type == -1 // 直近がLow
+    if is_ph and high > last_price // 新しいHigh候補
+        // Deviation判定: 底値から指定%以上上昇しているか
+        if f_dev_check(high, last_price, deviation)
+            dir := 1
+            array.unshift(pivot_idx, bar_index)
+            array.unshift(pivot_price, high)
+            array.unshift(pivot_dir, 1)
+            confirmed := true
+
+    else if is_pl and low < last_price // Lowの更新
+        array.set(pivot_idx, 0, bar_index)
+        array.set(pivot_price, 0, low)
+        
+else // 直近がHigh
+    if is_pl and low < last_price // 新しいLow候補
+        // Deviation判定: 高値から指定%以上下落しているか
+        if f_dev_check(low, last_price, deviation)
+            dir := -1
+            array.unshift(pivot_idx, bar_index)
+            array.unshift(pivot_price, low)
+            array.unshift(pivot_dir, -1)
+            confirmed := true
+
+    else if is_ph and high > last_price // Highの更新
+        array.set(pivot_idx, 0, bar_index)
+        array.set(pivot_price, 0, high)
+
+// 配列サイズ管理 (監視期間内に必要な分だけで良いが、少し多めに保持)
+// 100期間で最大50頂点あれば十分すぎるので制限
+if array.size(pivot_idx) > 100
+    array.pop(pivot_idx)
+    array.pop(pivot_price)
+    array.pop(pivot_dir)
+
+// ============================================================================
+// 密度検知ロジック (Density Logic)
+// ============================================================================
+// 過去 n 期間 (check_period) 内に含まれる頂点数をカウント
+// arrayには最新順に入っているので、前から順にbar_indexをチェック
+
+count = 0
+for i = 0 to array.size(pivot_idx) - 1
+    p_idx = array.get(pivot_idx, i)
+    
+    // 監視期間内かチェック (bar_index - p_idx <= check_period)
+    if bar_index - p_idx <= check_period
+        count += 1
+    else
+        // 期間外に出たらループ終了（古いデータはこれ以上チェック不要）
+        break
+
+// しきい値以上ならフラグOn
+is_dense = count >= vertex_count
+
+// ============================================================================
+// 描画
+// ============================================================================
+// ZigZagライン (確認用)
+if confirmed and array.size(pivot_idx) >= 2
+    l_col = array.get(pivot_dir, 0) == 1 ? color.blue : color.red
+    line.new(array.get(pivot_idx, 1), array.get(pivot_price, 1),
+             array.get(pivot_idx, 0), array.get(pivot_price, 0),
+             color=color.new(l_col, 50), width=2)
+             
+// 背景色
+bgcolor(is_dense ? bg_color : na, title="密度検知背景")
+
+// 情報表示 (デバッグ用)
+var label dbg_lbl = label.new(na, na, "", style=label.style_label_left, textcolor=color.black, color=color.white, size=size.normal)
+if show_count and barstate.islast
+    label.set_xy(dbg_lbl, bar_index + 1, close)
+    label.set_text(dbg_lbl, "Vertices (Last " + str.tostring(check_period) + "): " + str.tostring(count) + "\n(Threshold: " + str.tostring(vertex_count) + ")")

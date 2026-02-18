@@ -1,0 +1,87 @@
+//@version=5
+indicator("SMA Deviation Oscillator", overlay=false)
+
+// ============================================================================
+// 設定
+// ============================================================================
+group_sma = "移動平均線設定"
+len_75  = input.int(75,  "SMA 75 期間",  group=group_sma, minval=1)
+len_200 = input.int(200, "SMA 200 期間", group=group_sma, minval=1)
+
+group_dev = "偏差値設定"
+lookback = input.int(100, "偏差値計算期間", group=group_dev, minval=10)
+
+group_visual = "表示設定"
+upper_level = input.float(90.0, "警戒ライン (上限)", group=group_visual)
+lower_level = input.float(10.0, "安全ライン (下限)", group=group_visual)
+show_fill   = input.bool(true,  "背景塗りつぶし",   group=group_visual)
+
+// ============================================================================
+// 移動平均線の計算
+// ============================================================================
+sma_75  = ta.sma(close, len_75)
+sma_200 = ta.sma(close, len_200)
+
+// ============================================================================
+// 複合加熱スコアの計算
+// ============================================================================
+// システム概要:
+// 1. SMA Spread: 200SMAと75SMAの乖離率（トレンド強度）
+// 2. Price Deviation: 現在値と75SMAの乖離率（短期過熱感）
+// 3. Total Heat: 両方を合算し、標準化して0-100のスコアにする
+
+// --- ベース乖離率（トレンド強度） ---
+// SMA同士の乖離率（絶対値）
+sma_spread_pct = math.abs((sma_75 - sma_200) / sma_200) * 100
+
+// --- 現在値の乖離率（短期過熱感） ---
+// 現在値が75SMAからどれだけ離れているか（絶対値）
+price_dev_pct = math.abs((close - sma_75) / sma_75) * 100
+
+// --- 複合ヒートスコア ---
+// トレンドの乖離 + 現在値の行き過ぎを合算
+// 重み付けが必要な場合は係数を掛けるが、ここでは単純合算で「総乖離」を見る
+total_deviation = sma_spread_pct + price_dev_pct
+
+// ============================================================================
+// 正規化（0-100スコア化）
+// ============================================================================
+// 過去一定期間の「乖離の最大値/最小値」を使って正規化
+// これにより、ボラティリティが高い銘柄でも低い銘柄でも0-100に収まる
+dev_highest = ta.highest(total_deviation, lookback)
+dev_lowest  = ta.lowest(total_deviation, lookback)
+
+// 正規化 (0-100)
+// 分母が0になるのを防ぐためnzを使用
+score_normalized = nz((total_deviation - dev_lowest) / (dev_highest - dev_lowest), 0) * 100
+
+// スムージング（ノイズ除去で見やすくする）
+score_smooth = ta.sma(score_normalized, 3)
+
+// 0-100範囲にクランプ
+deviation_clamped = math.max(0, math.min(100, score_smooth))
+
+// レベル判定
+// ============================================================================
+is_high_deviation = deviation_clamped >= upper_level
+
+// ============================================================================
+// 描画
+// ============================================================================
+// 乖離度オシレーター（乖離が大きいほど赤、小さいほど緑）
+plot_color = color.from_gradient(deviation_clamped, 0, 100, color.lime, color.red)
+plot(deviation_clamped, "SMA 乖離度", color=plot_color, linewidth=2)
+
+// 基準ライン
+h_upper = hline(upper_level, "警戒ライン", color=color.new(color.red, 50), linestyle=hline.style_dashed)
+h_lower = hline(lower_level, "安全ライン", color=color.new(color.green, 50), linestyle=hline.style_dashed)
+
+// 背景塗りつぶし（警戒ゾーン）
+fill(h_upper, h_lower, color=show_fill ? color.new(color.gray, 95) : na, title="通常ゾーン")
+
+// ============================================================================
+// アラート
+// ============================================================================
+alertcondition(ta.crossover(deviation_clamped, upper_level), title="乖離拡大警戒", message="SMA Deviation: 乖離が警戒レベルに到達")
+alertcondition(ta.crossunder(deviation_clamped, lower_level), title="乖離縮小", message="SMA Deviation: 乖離が安全レベルに縮小")
+

@@ -1,0 +1,238 @@
+//@version=5
+indicator("SMA Trend Filter", overlay=true, max_bars_back=500)
+
+// ============================================================================
+// 設定
+// ============================================================================
+group_sma = "移動平均線設定"
+len_9   = input.int(9,   "SMA 9 (トリガー)",       group=group_sma)
+len_20  = input.int(20,  "SMA 20 (中期トレンド)",  group=group_sma)
+len_50  = input.int(50,  "SMA 50 (中期トレンド)",  group=group_sma)
+len_75  = input.int(75,  "SMA 75 (拒否フィルター)", group=group_sma)
+len_200 = input.int(200, "SMA 200 (超長期)",       group=group_sma)
+
+group_filter = "フィルター設定"
+pullback_bars     = input.int(10,  "押し目/戻り目 判定バー数",    group=group_filter, minval=1)
+reject_trend_bars = input.int(100, "逆張り防止バー数 (75SMA)",   group=group_filter, minval=1)
+reject_ext_bars   = input.int(200, "行き過ぎ警戒バー数 (75SMA)", group=group_filter, minval=1)
+cooldown_bars     = input.int(10,  "シグナル重複防止バー数",     group=group_filter, minval=1)
+
+group_reynolds = "🌌 乱流フィルター (レイノルズ数)"
+re_length      = input.int(20,    "計算期間",           group=group_reynolds, minval=5)
+re_threshold   = input.float(3.0, "乱流しきい値 (Re)",  group=group_reynolds, minval=0.5, step=0.1, tooltip="この値を超えると極端な乱流と判定しエントリー拒否")
+show_re_bg     = input.bool(true, "乱流時に背景表示",   group=group_reynolds)
+
+group_vix = "📊 適応型VIXロジック (Adaptive Lookback)"
+use_vix_adaptive = input.bool(true, "VIXによる期間自動調整を有効化", group=group_vix)
+vix_symbol       = input.symbol("CBOE:VIX", "VIXシンボル", group=group_vix)
+base_vix         = input.float(20.0, "基準VIX値",          group=group_vix, tooltip="VIXがこの値より高いと期間短縮(高速化)、低いと期間延長(安定化)")
+min_scale        = input.float(0.5,  "最小期間倍率",       group=group_vix, minval=0.1, maxval=1.0)
+max_scale        = input.float(2.0,  "最大期間倍率",       group=group_vix, minval=1.0)
+
+group_visual = "表示設定"
+show_sma_9   = input.bool(true,  "SMA 9 表示",   group=group_visual)
+show_sma_20  = input.bool(true,  "SMA 20 表示",  group=group_visual)
+show_sma_50  = input.bool(true,  "SMA 50 表示",  group=group_visual)
+show_sma_75  = input.bool(true,  "SMA 75 表示",  group=group_visual)
+show_sma_200 = input.bool(true,  "SMA 200 表示", group=group_visual)
+
+// ============================================================================
+// 移動平均線の計算
+// ============================================================================
+sma_9   = ta.sma(close, len_9)
+sma_20  = ta.sma(close, len_20)
+sma_50  = ta.sma(close, len_50)
+sma_75  = ta.sma(close, len_75)
+sma_200 = ta.sma(close, len_200)
+ema_200 = ta.ema(close, len_200)  // 200EMA追加（拒否フィルター用）
+
+// ============================================================================
+// 🌌 レイノルズ数による乱流判定 (Physics & Fluid Dynamics)
+// ============================================================================
+// 市場を「流体」と見なし、トレンドの「質」を物理計算で評価
+// Re = 速度(Momentum) / 粘性(1/Volatility) = Momentum × Volatility
+// 低Re = 層流（滑らかなトレンド）→ エントリー推奨
+// 高Re = 乱流（乱高下）→ エントリー回避
+
+// モメンタム（速度）: 価格変動の絶対値
+momentum = math.abs(close - close[re_length])
+
+// ボラティリティ（粘性の逆数）: 標準偏差
+volatility = ta.stdev(close, re_length)
+
+// 平均ボラティリティ（正規化用）
+avg_volatility = ta.sma(volatility, re_length * 2)
+
+// レイノルズ数の計算（正規化）
+// Re = (Momentum / AvgVolatility) × (Volatility / AvgVolatility)
+re_momentum_norm  = nz(momentum / avg_volatility, 0)
+re_volatility_norm = nz(volatility / avg_volatility, 1)
+reynolds_number = re_momentum_norm * re_volatility_norm
+
+// 極端な乱流判定（しきい値超過時のみ拒否）
+is_extreme_turbulence = reynolds_number > re_threshold
+
+// ============================================================================
+// 📊 適応型VIXロジック (Adaptive VIX Lookback)
+// ============================================================================
+// 恐怖指数 (VIX) を取得し、市場のボラティリティに合わせて期間を自動調整
+// VIX高 = 期間倍率 < 1.0 (期間短縮 = 高速反応)
+// VIX低 = 期間倍率 > 1.0 (期間延長 = ダマシ回避)
+
+// VIXデータの取得（日足の終値を使用、ギャップ埋めあり）
+vix_close = request.security(vix_symbol, "D", close, gaps=barmerge.gaps_off)
+
+// 期間倍率の計算
+// VIXが高いほど倍率は小さくなる (例: Base=20, Cur=30 -> 20/30 = 0.66)
+// VIXが低いほど倍率は大きくなる (例: Base=20, Cur=10 -> 20/10 = 2.0)
+vix_ratio = 1.0
+if use_vix_adaptive and not na(vix_close) and vix_close > 0
+    raw_ratio = base_vix / vix_close
+    vix_ratio := math.max(min_scale, math.min(max_scale, raw_ratio))
+
+// 動的な期間設定
+// int型にキャストして使用
+d_pullback_bars     = math.max(1, math.round(pullback_bars * vix_ratio))
+d_reject_trend_bars = math.max(1, math.round(reject_trend_bars * vix_ratio))
+d_reject_ext_bars   = math.max(1, math.round(reject_ext_bars * vix_ratio))
+// cooldownはシグナル頻度に関わるため固定が良い場合もあるが、ここでは適応させる
+d_cooldown_bars     = math.max(1, math.round(cooldown_bars * vix_ratio))
+
+// デバッグ用（データウィンドウに表示）
+// plotchar(vix_ratio, "VIX Ratio", "", location.top)
+// plotchar(d_pullback_bars, "Dyn Pullback", "", location.top)
+
+// ============================================================================
+// ヘルパー関数: 連続下落/上昇の判定
+// ============================================================================
+// 指定されたSMAが過去n本連続で下落しているかを判定
+f_consecutive_decline(float src, int bars) =>
+    result = true
+    for i = 0 to bars - 1
+        if nz(src[i]) >= nz(src[i + 1])
+            result := false
+            break
+    result
+
+// 指定されたSMAが過去n本連続で上昇しているかを判定
+f_consecutive_rise(float src, int bars) =>
+    result = true
+    for i = 0 to bars - 1
+        if nz(src[i]) <= nz(src[i + 1])
+            result := false
+            break
+    result
+
+// ============================================================================
+// シグナル条件の計算
+// ============================================================================
+
+// --- ロング条件 ---
+
+// 1. 基本トレンド: 20SMA と 50SMA が 200SMA より上
+long_trend = sma_20 > sma_200 and sma_50 > sma_200
+
+// 2. 調整（押し目）: 20SMA と 50SMA が直近n本連続で下落（動的期間）
+long_pullback = f_consecutive_decline(sma_20, int(d_pullback_bars)) and f_consecutive_decline(sma_50, int(d_pullback_bars))
+
+// 3. 反転トリガー: 9SMA が上昇に転じた
+long_trigger = sma_9 > sma_9[1]
+
+// 4. 75SMA拒否フィルター
+//    - 逆張り防止: 75SMAが過去100本連続で下落していない
+//    - 高値警戒: 75SMAが過去200本連続で上昇していない
+// 4. 75SMA拒否フィルター
+//    - 逆張り防止: 75SMAが過去n本連続で下落していない（動的期間）
+//    - 高値警戒: 75SMAが過去n本連続で上昇していない（動的期間）
+long_reject_trend  = not f_consecutive_decline(sma_75, int(d_reject_trend_bars))
+long_reject_extend = not f_consecutive_rise(sma_75, int(d_reject_ext_bars))
+
+// 5. MA順序による拒否フィルター
+//    上から 75SMA > 200SMA > 200EMA の順序は上昇トレンド構造 → ロング拒否（行き過ぎ警戒）
+//    ただし、75SMAが20期間連続上昇中ならオーバーライド（強いモメンタム）
+long_ma_order_base = sma_75 > sma_200 and sma_200 > ema_200
+long_momentum_override = f_consecutive_rise(sma_75, 20)
+long_ma_order_reject = long_ma_order_base and not long_momentum_override
+
+long_filter = long_reject_trend and long_reject_extend and not long_ma_order_reject
+
+// --- ショート条件 ---
+
+// 1. 基本トレンド: 20SMA と 50SMA が 200SMA より下
+short_trend = sma_20 < sma_200 and sma_50 < sma_200
+
+// 2. 調整（戻り目）: 20SMA と 50SMA が直近n本連続で上昇（動的期間）
+short_pullback = f_consecutive_rise(sma_20, int(d_pullback_bars)) and f_consecutive_rise(sma_50, int(d_pullback_bars))
+
+// 3. 反転トリガー: 9SMA が下落に転じた
+short_trigger = sma_9 < sma_9[1]
+
+// 4. 75SMA拒否フィルター
+//    - 逆張り防止: 75SMAが過去100本連続で上昇していない
+//    - 底値警戒: 75SMAが過去200本連続で下落していない
+// 4. 75SMA拒否フィルター
+//    - 逆張り防止: 75SMAが過去n本連続で上昇していない（動的期間）
+//    - 底値警戒: 75SMAが過去n本連続で下落していない（動的期間）
+short_reject_trend  = not f_consecutive_rise(sma_75, int(d_reject_trend_bars))
+short_reject_extend = not f_consecutive_decline(sma_75, int(d_reject_ext_bars))
+
+// 5. MA順序による拒否フィルター
+//    下から 75SMA < 200SMA < 200EMA の順序は下降トレンド構造 → ショート拒否（行き過ぎ警戒）
+//    ただし、75SMAが20期間連続下落中ならオーバーライド（強いモメンタム）
+short_ma_order_base = sma_75 < sma_200 and sma_200 < ema_200
+short_momentum_override = f_consecutive_decline(sma_75, 20)
+short_ma_order_reject = short_ma_order_base and not short_momentum_override
+
+short_filter = short_reject_trend and short_reject_extend and not short_ma_order_reject
+
+// ============================================================================
+// 重複防止ロジック
+// ============================================================================
+var int bars_since_long  = 200 // 初期値を十分に大きく
+var int bars_since_short = 200
+
+bars_since_long  := bars_since_long  + 1
+bars_since_short := bars_since_short + 1
+
+// ============================================================================
+// シグナル判定
+// ============================================================================
+long_raw  = long_trend and long_pullback and long_trigger and long_filter
+short_raw = short_trend and short_pullback and short_trigger and short_filter
+
+// 🌌 乱流フィルター + 重複防止フィルター適用
+// 極端な乱流時はエントリーを拒否
+// 🌌 乱流フィルター + 重複防止フィルター適用
+// 極端な乱流時はエントリーを拒否 + 動的クールダウン期間を使用
+long_signal  = long_raw and bars_since_long > d_cooldown_bars and not is_extreme_turbulence
+short_signal = short_raw and bars_since_short > d_cooldown_bars and not is_extreme_turbulence
+
+// シグナル発生時にカウンターをリセット
+if long_signal
+    bars_since_long := 0
+if short_signal
+    bars_since_short := 0
+
+// ============================================================================
+// 描画: 移動平均線
+// ============================================================================
+plot(show_sma_9   ? sma_9   : na, "SMA 9",   color=color.new(color.yellow, 0), linewidth=1)
+plot(show_sma_20  ? sma_20  : na, "SMA 20",  color=color.new(color.orange, 0), linewidth=1)
+plot(show_sma_50  ? sma_50  : na, "SMA 50",  color=color.new(color.blue, 0),   linewidth=2)
+plot(show_sma_75  ? sma_75  : na, "SMA 75",  color=color.new(color.purple, 0), linewidth=2)
+plot(show_sma_200 ? sma_200 : na, "SMA 200", color=color.new(color.red, 0),    linewidth=3)
+
+// 🌌 レイノルズ数による乱流背景表示
+bgcolor(show_re_bg and is_extreme_turbulence ? color.new(color.orange, 85) : na, title="極端乱流警告")
+
+// ============================================================================
+// 描画: シグナル矢印
+// ============================================================================
+plotshape(long_signal,  title="ロングシグナル",  location=location.belowbar, color=color.new(color.lime, 0),  style=shape.triangleup,   size=size.normal, text="LONG")
+plotshape(short_signal, title="ショートシグナル", location=location.abovebar, color=color.new(color.red, 0),   style=shape.triangledown, size=size.normal, text="SHORT")
+
+// ============================================================================
+// アラート
+// ============================================================================
+alertcondition(long_signal,  title="ロングシグナル",  message="SMA Trend Filter: ロングシグナル発生")
+alertcondition(short_signal, title="ショートシグナル", message="SMA Trend Filter: ショートシグナル発生")

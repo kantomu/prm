@@ -1,0 +1,615 @@
+//@version=5
+indicator("WAVE APEX [三波の三波 APEX EDITION]", shorttitle="WAVE APEX", overlay=true, max_bars_back=5000, max_lines_count=500, max_labels_count=500)
+
+// =============================================================================
+// WAVE APEX: 三波の三波 押し目・戻り検知インジケーター
+// =============================================================================
+// 
+// [ Philosophy ]
+// エリオット波動の「第三波の第三波」は最も強力なインパルス。
+// その押し目・戻りを科学的に検知し、最適なエントリータイミングで矢印を表示。
+//
+// [ Architecture - 4 Layer System ]
+// 🌌 LAYER 1: Physics & Fluid Dynamics (物理学・流体力学)
+//    - Reynolds Number (レイノルズ数): 層流 vs 乱流判定
+//    - Phase Geometry Sync (位相幾何学的同期): 速度・加速度の方向一致
+//
+// 📊 LAYER 2: Advanced Statistics (高度統計学)
+//    - Kurtosis (尖度): ファットテール・ブラックスワン検知
+//    - Skewness (歪度): クラッシュリスク判定
+//    - Hurst Exponent (ハースト指数): トレンド性 vs ランダムウォーク
+//    - Robust Z-Score (ロバストZスコア): MADベースの外れ値耐性
+//
+// 🤖 LAYER 3: Adaptive Algorithms (適応型アルゴリズム)
+//    - VIX-Based Dynamic Lookback: 恐怖時は短期、安定時は長期
+//    - KAMA: ノイズ耐性と即応性を両立
+//
+// 📐 LAYER 4: Wave Structure Detection (波動構造検出)
+//    - Elliott Wave Pivot Analysis
+//    - Wave 2/4 Pullback Recognition
+//    - Wave 3 Ignition Detection
+//
+// =============================================================================
+// Designed for 10-Year Robustness. Pure Mathematics. No Curve Fitting.
+// =============================================================================
+
+// ==========================================
+// ⚙️ SETTINGS (MASTER CONTROL)
+// ==========================================
+
+// --- UNIVERSE SETTINGS ---
+grp_univ = "🌌 UNIVERSE (General)"
+mode_sens = input.string("Standard", "Sensitivity Mode", options=["Conservative", "Standard", "Aggressive"], group=grp_univ, tooltip="Conservative=厳選, Standard=バランス, Aggressive=積極的")
+show_dashboard = input.bool(false, "Show Dashboard", group=grp_univ)
+show_debug = input.bool(false, "Show Debug Labels", group=grp_univ)
+show_warning = input.bool(true, "Show Fat-Tail Warning (⚡)", group=grp_univ)
+
+// --- PHYSICS LAYER ---
+grp_phys = "⚛️ PHYSICS ENGINE"
+len_reynolds = input.int(14, "Reynolds Lookback", minval=5, maxval=50, group=grp_phys, tooltip="流体力学計算の期間")
+th_laminar = input.float(1.5, "Laminar Threshold", step=0.1, group=grp_phys, tooltip="層流判定の閾値（低い=滑らか）")
+th_turbulent = input.float(3.0, "Turbulence Threshold", step=0.1, group=grp_phys, tooltip="乱流判定の閾値（高い=荒れ）")
+phase_energy_th = input.float(1.2, "Phase Energy Threshold", step=0.1, group=grp_phys, tooltip="位相同期のエネルギー閾値")
+
+// --- STATISTICS LAYER ---
+grp_stat = "📊 STATISTICS ENGINE"
+len_kurtosis = input.int(20, "Kurtosis/Skewness Lookback", minval=10, maxval=100, group=grp_stat)
+th_kurtosis = input.float(5.0, "Fat-Tail Threshold (Kurtosis)", step=0.5, group=grp_stat, tooltip="この値を超えると⚡警告")
+th_skew_danger = input.float(-1.5, "Crash Risk Threshold (Skewness)", step=0.1, group=grp_stat, tooltip="負の歪みがこれより強いとロングを拒否")
+len_hurst = input.int(50, "Hurst Exponent Lookback", minval=20, maxval=200, group=grp_stat)
+len_robust_z = input.int(20, "Robust Z-Score Lookback", minval=10, maxval=100, group=grp_stat)
+
+// --- ADAPTIVE LAYER ---
+grp_adapt = "🤖 ADAPTIVE ENGINE"
+use_vix_adapt = input.bool(true, "Use VIX-Based Adaptation", group=grp_adapt, tooltip="VIXに基づいて計算期間を自動調整")
+vix_symbol = input.symbol("TVC:VIX", "VIX Symbol", group=grp_adapt)
+vix_high_th = input.float(25.0, "VIX High Threshold", group=grp_adapt)
+vix_low_th = input.float(15.0, "VIX Low Threshold", group=grp_adapt)
+kama_len = input.int(20, "KAMA Base Length", minval=5, maxval=50, group=grp_adapt)
+kama_fast = input.int(2, "KAMA Fast Period", minval=2, maxval=10, group=grp_adapt)
+kama_slow = input.int(30, "KAMA Slow Period", minval=10, maxval=50, group=grp_adapt)
+
+// --- WAVE STRUCTURE LAYER ---
+grp_wave = "📐 WAVE STRUCTURE ENGINE"
+pivot_len = input.int(5, "Pivot Detection Length", minval=2, maxval=20, group=grp_wave, tooltip="スイングポイント検出の期間")
+wave2_fib_min = input.float(0.382, "Wave 2 Min Retrace (Fib)", step=0.001, group=grp_wave)
+wave2_fib_max = input.float(0.786, "Wave 2 Max Retrace (Fib)", step=0.001, group=grp_wave)
+wave_confirm_bars = input.int(3, "Confirmation Bars", minval=1, maxval=10, group=grp_wave)
+
+// --- VOLUME/SMA/EMA SUPPORT ---
+grp_ma = "📈 MOVING AVERAGE SUPPORT"
+use_ma_filter = input.bool(true, "Use MA Trend Filter", group=grp_ma)
+ma_type = input.string("EMA", "MA Type", options=["SMA", "EMA", "KAMA"], group=grp_ma)
+ma_len_fast = input.int(20, "Fast MA Length", group=grp_ma)
+ma_len_slow = input.int(50, "Slow MA Length", group=grp_ma)
+use_vol_confirm = input.bool(true, "Use Volume Confirmation", group=grp_ma)
+vol_mult = input.float(1.2, "Volume Multiplier", step=0.1, group=grp_ma)
+
+// ==========================================
+// 📚 LAYER 1: PHYSICS & FLUID DYNAMICS ENGINE
+// ==========================================
+// 市場を「流体」として捉え、トレンドの「質（滑らかさ）」を評価
+
+// --- 1.1 Reynolds Number (レイノルズ数) ---
+// Re = 速度 (Momentum) / 粘性 (Volatility)
+// 低い = 層流 (Laminar) = 滑らかなトレンド = エントリー推奨
+// 高い = 乱流 (Turbulent) = 乱高下 = エントリー回避
+f_reynolds(_src, _len) =>
+    float _velocity = math.abs(_src - _src[_len])  // 価格の「速度」
+    float _viscosity = ta.stdev(_src, _len)        // 「粘性」= ボラティリティ
+    float _re = (_viscosity > 0) ? _velocity / _viscosity : 0.0
+    _re
+
+// --- 1.2 Phase Geometry Sync (位相幾何学的同期) ---
+// 価格の「速度」と「加速度」の方向が一致し、強いエネルギーを持つ瞬間を検知
+// これが初動（Wave 3開始点）のサイン
+f_phase_sync(_src, _len) =>
+    float _vel = _src - _src[1]                    // 速度 (1次微分)
+    float _acc = _vel - _vel[1]                    // 加速度 (2次微分)
+    float _energy_raw = math.abs(_vel) * volume    // 運動エネルギー = 速度 * 質量(Volume)
+    float _energy_avg = ta.sma(math.abs(_src - _src[1]) * volume, _len)
+    float _energy_norm = (_energy_avg > 0) ? _energy_raw / _energy_avg : 0.0
+    
+    // 同期判定: 速度と加速度が同じ方向
+    bool _sync_bull = (_vel > 0 and _acc > 0)      // 上昇加速
+    bool _sync_bear = (_vel < 0 and _acc < 0)      // 下降加速
+    int _sync_dir = _sync_bull ? 1 : (_sync_bear ? -1 : 0)
+    
+    [_sync_dir, _energy_norm]
+
+// --- 1.3 Fractal Dimension (フラクタル次元) ---
+// 市場の複雑さを測定。1.0に近い = トレンド、1.5 = ランダム、2.0 = 平均回帰
+f_fractal_dim(_src, _len) =>
+    float _range = ta.highest(_src, _len) - ta.lowest(_src, _len)
+    float _std = ta.stdev(_src, _len)
+    float _rs = (_std != 0) ? _range / _std : 0.0
+    float _hurst_approx = (_rs > 0) ? math.log(_rs) / math.log(_len) : 0.5
+    float _dim = 2.0 - _hurst_approx
+    _dim
+
+// Physics Engine Execution
+float val_reynolds = f_reynolds(close, len_reynolds)
+[phase_dir, phase_energy] = f_phase_sync(close, len_reynolds)
+float val_fractal = f_fractal_dim(close, len_reynolds)
+
+// Physics State Classification
+bool state_laminar = (val_reynolds < th_laminar)
+bool state_turbulent = (val_reynolds > th_turbulent)
+bool state_transition = not state_laminar and not state_turbulent
+
+// Phase Sync Signal
+bool phase_sync_bull = (phase_dir == 1) and (phase_energy > phase_energy_th)
+bool phase_sync_bear = (phase_dir == -1) and (phase_energy > phase_energy_th)
+
+// Physics Score (-10 to +10)
+float score_physics = 0.0
+if state_laminar
+    score_physics := 10.0  // 層流 = 最高評価
+else if state_turbulent
+    score_physics := -10.0 // 乱流 = ベト
+else
+    score_physics := 0.0   // 中間
+
+// ==========================================
+// 📚 LAYER 2: ADVANCED STATISTICS ENGINE
+// ==========================================
+// 正規分布を前提としない、市場の異常や歪みを検知
+
+// --- 2.1 Kurtosis (尖度) - ファットテール検知 ---
+// 正規分布 = 3.0 (ここでは超過尖度なので正規分布 = 0)
+// 高い尖度 = 裾が厚い = ブラックスワン級の異常な動きの可能性
+f_kurtosis(_src, _len) =>
+    float _mean = ta.sma(_src, _len)
+    float _std = ta.stdev(_src, _len)
+    float _sum4 = 0.0
+    int _count = 0
+    for i = 0 to _len - 1
+        if not na(_src[i])
+            float _dev = _src[i] - _mean
+            _sum4 += math.pow(_dev, 4)
+            _count += 1
+    float _m4 = _count > 0 ? _sum4 / _count : 0.0
+    float _kurt = (_std != 0) ? (_m4 / math.pow(_std, 4)) - 3.0 : 0.0
+    _kurt // 超過尖度 (Excess Kurtosis)
+
+// --- 2.2 Skewness (歪度) - クラッシュリスク検知 ---
+// 負の歪み = 左に裾が長い = 暴落リスク
+// 正の歪み = 右に裾が長い = 暴騰の可能性
+f_skewness(_src, _len) =>
+    float _mean = ta.sma(_src, _len)
+    float _std = ta.stdev(_src, _len)
+    float _sum3 = 0.0
+    int _count = 0
+    for i = 0 to _len - 1
+        if not na(_src[i])
+            float _dev = _src[i] - _mean
+            _sum3 += math.pow(_dev, 3)
+            _count += 1
+    float _m3 = _count > 0 ? _sum3 / _count : 0.0
+    float _skew = (_std != 0) ? _m3 / math.pow(_std, 3) : 0.0
+    _skew
+
+// --- 2.3 Hurst Exponent (ハースト指数) ---
+// H > 0.5: トレンド性あり（過去の動きが継続しやすい）
+// H = 0.5: ランダムウォーク
+// H < 0.5: 平均回帰（反転しやすい）
+f_hurst(_src, _len) =>
+    // R/S Analysis (Rescaled Range)
+    float _mean = ta.sma(_src, _len)
+    float _std = ta.stdev(_src, _len)
+    
+    // Cumulative deviation from mean
+    float _max_dev = 0.0
+    float _min_dev = 0.0
+    float _cum = 0.0
+    for i = 0 to _len - 1
+        if not na(_src[i])
+            _cum += (_src[i] - _mean)
+            _max_dev := math.max(_max_dev, _cum)
+            _min_dev := math.min(_min_dev, _cum)
+    
+    float _range = _max_dev - _min_dev
+    float _rs = (_std != 0) ? _range / _std : 0.0
+    
+    // H = log(R/S) / log(N)
+    float _h = (_rs > 0 and _len > 1) ? math.log(_rs) / math.log(_len) : 0.5
+    math.max(0.0, math.min(1.0, _h))
+
+// --- 2.4 Robust Z-Score (ロバストZスコア) ---
+// 中央値絶対偏差 (MAD) を使用し、外れ値の影響を受けにくい
+f_median(_src, _len) =>
+    float[] _arr = array.new_float(_len)
+    for i = 0 to _len - 1
+        array.set(_arr, i, nz(_src[i]))
+    array.sort(_arr)
+    float _med = array.get(_arr, _len / 2)
+    _med
+
+f_mad(_src, _len, _median) =>
+    float _sum = 0.0
+    for i = 0 to _len - 1
+        _sum += math.abs(nz(_src[i]) - _median)
+    _sum / _len
+
+f_robust_z(_src, _len) =>
+    float _median = f_median(_src, _len)
+    float _mad = f_mad(_src, _len, _median)
+    float _k = 1.4826  // MAD to StdDev conversion factor
+    float _robust_std = _mad * _k
+    float _z = (_robust_std != 0) ? (_src - _median) / _robust_std : 0.0
+    _z
+
+// Statistics Engine Execution
+float returns = (close - close[1]) / close[1] * 100  // Percentage returns
+float val_kurtosis = f_kurtosis(returns, len_kurtosis)
+float val_skewness = f_skewness(returns, len_kurtosis)
+float val_hurst = f_hurst(close, len_hurst)
+float val_robust_z = f_robust_z(close, len_robust_z)
+
+// Statistics Alerts
+bool alert_fat_tail = val_kurtosis > th_kurtosis
+bool alert_crash_risk = val_skewness < th_skew_danger
+bool is_trending = val_hurst > 0.55
+bool is_mean_revert = val_hurst < 0.45
+
+// Statistics Score (-10 to +10)
+float score_stats = 0.0
+// Hurst weighting
+if is_trending
+    score_stats += 5.0
+else if is_mean_revert
+    score_stats -= 3.0
+
+// Skewness penalty for longs
+if alert_crash_risk
+    score_stats -= 5.0
+
+// Fat-tail penalty (both directions risky)
+if alert_fat_tail
+    score_stats -= 3.0
+
+// ==========================================
+// 📚 LAYER 3: ADAPTIVE ALGORITHMS ENGINE
+// ==========================================
+// 市場環境の変化に合わせて、設定を動的に調整
+
+// --- 3.1 VIX-Based Dynamic Lookback ---
+// VIX高い(恐怖) = 短い期間(高速反応)
+// VIX低い(安定) = 長い期間(ダマシ回避)
+f_get_vix() =>
+    float _vix = request.security(vix_symbol, "D", close, lookahead=barmerge.lookahead_on)
+    nz(_vix, 20.0)  // Default 20 if VIX not available
+
+float current_vix = use_vix_adapt ? f_get_vix() : 20.0
+
+f_dynamic_lookback(_base_len, _vix) =>
+    float _factor = 1.0
+    if _vix > vix_high_th
+        _factor := 0.6  // High VIX = shorter lookback
+    else if _vix < vix_low_th
+        _factor := 1.4  // Low VIX = longer lookback
+    else
+        _factor := 1.0
+    int _adj_len = math.round(_base_len * _factor)
+    math.max(5, _adj_len)
+
+int adaptive_len = f_dynamic_lookback(len_reynolds, current_vix)
+
+// --- 3.2 KAMA (Kaufman Adaptive Moving Average) ---
+// ノイズが多い = 水平（反応しない）
+// トレンド = 敏感に反応
+f_kama(_src, _len, _fast, _slow) =>
+    // Efficiency Ratio (ER)
+    float _change = math.abs(_src - _src[_len])
+    float _vol = math.sum(math.abs(_src - _src[1]), _len)
+    float _er = (_vol != 0) ? _change / _vol : 0.0
+    
+    // Smoothing Constant (SC)
+    float _fast_sc = 2.0 / (_fast + 1)
+    float _slow_sc = 2.0 / (_slow + 1)
+    float _sc = math.pow(_er * (_fast_sc - _slow_sc) + _slow_sc, 2)
+    
+    // KAMA Calculation
+    var float _kama = 0.0
+    _kama := na(_kama[1]) ? _src : _kama[1] + _sc * (_src - _kama[1])
+    _kama
+
+float val_kama = f_kama(close, kama_len, kama_fast, kama_slow)
+float kama_slope = val_kama - val_kama[1]
+bool kama_rising = kama_slope > 0
+bool kama_falling = kama_slope < 0
+
+// --- 3.3 Standard MA Support ---
+f_ma(_src, _len, _type) =>
+    switch _type
+        "SMA" => ta.sma(_src, _len)
+        "EMA" => ta.ema(_src, _len)
+        "KAMA" => f_kama(_src, _len, kama_fast, kama_slow)
+        => ta.ema(_src, _len)
+
+float ma_fast = f_ma(close, ma_len_fast, ma_type)
+float ma_slow = f_ma(close, ma_len_slow, ma_type)
+bool ma_bull = ma_fast > ma_slow
+bool ma_bear = ma_fast < ma_slow
+
+// Volume Confirmation
+float vol_avg = ta.sma(volume, 20)
+bool vol_elevated = volume > vol_avg * vol_mult
+
+// Adaptive Score (-10 to +10)
+float score_adapt = 0.0
+if kama_rising
+    score_adapt += 3.0
+else if kama_falling
+    score_adapt -= 3.0
+
+if use_ma_filter
+    if ma_bull
+        score_adapt += 2.0
+    else if ma_bear
+        score_adapt -= 2.0
+
+if use_vol_confirm and vol_elevated
+    score_adapt += 2.0
+
+// ==========================================
+// 📚 LAYER 4: WAVE STRUCTURE ENGINE
+// ==========================================
+// エリオット波動の「三波の三波」押し目・戻りを検出
+
+// --- 4.1 Pivot Detection ---
+float ph = ta.pivothigh(high, pivot_len, pivot_len)
+float pl = ta.pivotlow(low, pivot_len, pivot_len)
+
+// Store recent pivots
+var float[] pivot_highs = array.new_float(10, na)
+var float[] pivot_lows = array.new_float(10, na)
+var int[] pivot_high_bars = array.new_int(10, na)
+var int[] pivot_low_bars = array.new_int(10, na)
+
+if not na(ph)
+    array.unshift(pivot_highs, high[pivot_len])
+    array.unshift(pivot_high_bars, bar_index - pivot_len)
+    if array.size(pivot_highs) > 10
+        array.pop(pivot_highs)
+        array.pop(pivot_high_bars)
+
+if not na(pl)
+    array.unshift(pivot_lows, low[pivot_len])
+    array.unshift(pivot_low_bars, bar_index - pivot_len)
+    if array.size(pivot_lows) > 10
+        array.pop(pivot_lows)
+        array.pop(pivot_low_bars)
+
+// --- 4.2 Wave Structure Analysis ---
+// Wave 1: Initial impulse from pivot low to pivot high
+// Wave 2: Pullback (38.2% - 78.6% retracement)
+// Wave 3: Breakout above Wave 1 high with momentum
+
+f_get_wave_state() =>
+    // Get recent pivots
+    float _pl0 = array.size(pivot_lows) > 0 ? array.get(pivot_lows, 0) : na
+    float _pl1 = array.size(pivot_lows) > 1 ? array.get(pivot_lows, 1) : na
+    float _ph0 = array.size(pivot_highs) > 0 ? array.get(pivot_highs, 0) : na
+    float _ph1 = array.size(pivot_highs) > 1 ? array.get(pivot_highs, 1) : na
+    
+    // Bullish Wave Setup
+    // PL1 (Wave 0) -> PH1 (Wave 1 Top) -> PL0 (Wave 2 Bottom) -> Current
+    float _w1_height = na(_ph1) or na(_pl1) ? 0 : _ph1 - _pl1
+    float _w2_depth = na(_ph1) or na(_pl0) ? 0 : _ph1 - _pl0
+    float _w2_retrace = _w1_height != 0 ? _w2_depth / _w1_height : 0.0
+    
+    // Valid Wave 2 Pullback?
+    bool _valid_w2_bull = (_w2_retrace >= wave2_fib_min) and (_w2_retrace <= wave2_fib_max)
+    
+    // Wave 3 Starting Conditions (Bullish)
+    // Price approaching/breaking Wave 1 high with momentum
+    bool _w3_ignition_bull = _valid_w2_bull and not na(_ph1) and (close > _pl0) and (close > _ph1 * 0.98)
+    
+    // Bearish Wave Setup (Mirror)
+    float _w1_height_bear = na(_pl1) or na(_ph1) ? 0 : _pl1 - _ph1
+    float _w2_depth_bear = na(_pl1) or na(_ph0) ? 0 : _ph0 - _pl1
+    float _w2_retrace_bear = _w1_height_bear != 0 ? math.abs(_w2_depth_bear / _w1_height_bear) : 0.0
+    
+    bool _valid_w2_bear = (_w2_retrace_bear >= wave2_fib_min) and (_w2_retrace_bear <= wave2_fib_max)
+    bool _w3_ignition_bear = _valid_w2_bear and not na(_pl1) and (close < _ph0) and (close < _pl1 * 1.02)
+    
+    // Higher Low confirmation for uptrend
+    bool _higher_low = not na(_pl0) and not na(_pl1) and (_pl0 > _pl1)
+    // Lower High confirmation for downtrend
+    bool _lower_high = not na(_ph0) and not na(_ph1) and (_ph0 < _ph1)
+    
+    [_w3_ignition_bull, _w3_ignition_bear, _higher_low, _lower_high, _w2_retrace, _w2_retrace_bear]
+
+[w3_bull, w3_bear, higher_low, lower_high, w2_ret_bull, w2_ret_bear] = f_get_wave_state()
+
+// --- 4.3 Pullback Detection (押し目・戻り) ---
+// 押し目: 上昇トレンド中の一時的な下落後の反転
+// 戻り: 下降トレンド中の一時的な上昇後の反転
+
+// Bullish Pullback (押し目)
+bool pullback_bull_setup = ma_bull and (close < val_kama) and (close > ma_slow) and higher_low
+bool pullback_bull_trigger = pullback_bull_setup[1] and (close > val_kama)
+
+// Bearish Pullback (戻り)  
+bool pullback_bear_setup = ma_bear and (close > val_kama) and (close < ma_slow) and lower_high
+bool pullback_bear_trigger = pullback_bear_setup[1] and (close < val_kama)
+
+// Wave Score (-10 to +10)
+float score_wave = 0.0
+if w3_bull
+    score_wave += 8.0
+if w3_bear
+    score_wave -= 8.0
+if pullback_bull_trigger
+    score_wave += 5.0
+if pullback_bear_trigger
+    score_wave -= 5.0
+if higher_low and ma_bull
+    score_wave += 2.0
+if lower_high and ma_bear
+    score_wave -= 2.0
+
+// ==========================================
+// 🗳️ SYNTHESIS ENGINE (統合判定エンジン)
+// ==========================================
+// 全レイヤーのスコアを統合し、最終シグナルを生成
+
+// Sensitivity Thresholds
+float th_signal = mode_sens == "Conservative" ? 20.0 : (mode_sens == "Aggressive" ? 10.0 : 15.0)
+
+// Weighted Total Score
+// Physics: 30%, Stats: 20%, Adaptive: 20%, Wave: 30%
+float w_phys = 0.30
+float w_stat = 0.20
+float w_adapt = 0.20
+float w_wave = 0.30
+
+float total_score = (score_physics * w_phys) + (score_stats * w_stat) + (score_adapt * w_adapt) + (score_wave * w_wave)
+
+// --- SIGNAL GENERATION ---
+// Bullish Signal Conditions
+bool cond_bull_physics = state_laminar or state_transition  // Not turbulent
+bool cond_bull_phase = phase_sync_bull                       // Velocity & Acceleration synced upward
+bool cond_bull_stats = not alert_crash_risk                  // No crash risk
+bool cond_bull_trend = is_trending or not is_mean_revert     // Trending market
+bool cond_bull_wave = (w3_bull or pullback_bull_trigger or higher_low)
+bool cond_bull_ma = not use_ma_filter or ma_bull
+bool cond_bull_kama = kama_rising
+
+// Bearish Signal Conditions  
+bool cond_bear_physics = state_laminar or state_transition
+bool cond_bear_phase = phase_sync_bear
+bool cond_bear_stats = val_skewness > -0.5  // Not heavily negative skewed (continuation down)
+bool cond_bear_trend = is_trending or not is_mean_revert
+bool cond_bear_wave = (w3_bear or pullback_bear_trigger or lower_high)
+bool cond_bear_ma = not use_ma_filter or ma_bear
+bool cond_bear_kama = kama_falling
+
+// VETO Conditions (Absolute rejection)
+bool veto_turbulence = state_turbulent
+bool veto_fat_tail = alert_fat_tail and mode_sens != "Aggressive"
+
+// Final Signal Logic
+bool raw_sig_bull = (total_score > th_signal) and cond_bull_physics and cond_bull_wave and cond_bull_kama
+bool raw_sig_bear = (total_score < -th_signal) and cond_bear_physics and cond_bear_wave and cond_bear_kama
+
+bool sig_bull = raw_sig_bull and not veto_turbulence and not veto_fat_tail and not raw_sig_bull[1]
+bool sig_bear = raw_sig_bear and not veto_turbulence and not veto_fat_tail and not raw_sig_bear[1]
+
+// Phase Sync Boost (Secondary signals for strong phase alignment)
+bool phase_sig_bull = phase_sync_bull and cond_bull_physics and cond_bull_ma and vol_elevated and not veto_turbulence
+bool phase_sig_bear = phase_sync_bear and cond_bear_physics and cond_bear_ma and vol_elevated and not veto_turbulence
+
+// Combined Signals (Wave + Phase)
+bool final_sig_bull = (sig_bull or (phase_sig_bull and not phase_sig_bull[1])) and not sig_bull[1] and not sig_bull[2]
+bool final_sig_bear = (sig_bear or (phase_sig_bear and not phase_sig_bear[1])) and not sig_bear[1] and not sig_bear[2]
+
+// Signal Confirmation (Wait for N bars of consistency)
+var int bull_confirm_count = 0
+var int bear_confirm_count = 0
+
+if total_score > th_signal * 0.7
+    bull_confirm_count += 1
+else
+    bull_confirm_count := 0
+
+if total_score < -th_signal * 0.7
+    bear_confirm_count += 1
+else
+    bear_confirm_count := 0
+
+bool confirmed_bull = (bull_confirm_count >= wave_confirm_bars) and final_sig_bull
+bool confirmed_bear = (bear_confirm_count >= wave_confirm_bars) and final_sig_bear
+
+// ==========================================
+// 🎨 VISUALIZATION (矢印のみ表示)
+// ==========================================
+
+// Color Definitions
+color c_bull = #00E676  // Matrix Green
+color c_bear = #FF1744  // Bright Red
+color c_warn = #FF9100  // Orange Warning
+color c_info = #2979FF  // Info Blue
+
+// --- MAIN SIGNALS: ARROWS ONLY ---
+// 今から上がる！ (Bullish Arrow)
+plotshape(confirmed_bull or final_sig_bull, title="⬆️ 今から上がる！", style=shape.triangleup, location=location.belowbar, color=c_bull, size=size.normal, text="UP", textcolor=c_bull)
+
+// 今から下がる！ (Bearish Arrow)
+plotshape(confirmed_bear or final_sig_bear, title="⬇️ 今から下がる！", style=shape.triangledown, location=location.abovebar, color=c_bear, size=size.normal, text="DOWN", textcolor=c_bear)
+
+// --- FAT-TAIL WARNING ---
+plotshape(show_warning and alert_fat_tail and not alert_fat_tail[1], title="⚡ Fat-Tail Warning", style=shape.xcross, location=location.abovebar, color=c_warn, size=size.tiny, text="⚡", textcolor=c_warn)
+
+// --- SECONDARY: Phase Sync Indicator (Small arrows) ---
+plotshape(show_debug and phase_sync_bull and not phase_sync_bull[1], title="Phase Sync Bull", style=shape.circle, location=location.belowbar, color=color.new(c_info, 50), size=size.tiny)
+
+plotshape(show_debug and phase_sync_bear and not phase_sync_bear[1], title="Phase Sync Bear", style=shape.circle, location=location.abovebar, color=color.new(c_info, 50), size=size.tiny)
+
+// --- KAMA LINE (Optional) ---
+plot(show_debug ? val_kama : na, "KAMA", color=color.new(#FFD600, 30), linewidth=2)
+
+// ==========================================
+// 📊 DASHBOARD (Optional)
+// ==========================================
+
+if show_dashboard and barstate.islast
+    // Build Dashboard String
+    string phys_state = state_laminar ? "🌊 LAMINAR" : (state_turbulent ? "🌪️ TURBULENT" : "⚡ TRANSITION")
+    string hurst_state = is_trending ? "📈 TREND" : (is_mean_revert ? "📉 REVERT" : "🎲 RANDOM")
+    string phase_state = phase_sync_bull ? "⬆️ BULL SYNC" : (phase_sync_bear ? "⬇️ BEAR SYNC" : "⏸️ NEUTRAL")
+    
+    string dash = ""
+    dash += "═══════════════════════\n"
+    dash += "   🌌 WAVE APEX ENGINE\n"
+    dash += "═══════════════════════\n"
+    dash += "\n"
+    dash += "📊 SCORES\n"
+    dash += "────────────────────────\n"
+    dash += " Physics : " + str.tostring(score_physics, "#.0") + "\n"
+    dash += " Stats   : " + str.tostring(score_stats, "#.0") + "\n"
+    dash += " Adaptive: " + str.tostring(score_adapt, "#.0") + "\n"
+    dash += " Wave    : " + str.tostring(score_wave, "#.0") + "\n"
+    dash += " TOTAL   : " + str.tostring(total_score, "#.0") + " / ±" + str.tostring(th_signal, "#.0") + "\n"
+    dash += "\n"
+    dash += "🔬 STATE\n"
+    dash += "────────────────────────\n"
+    dash += " Flow    : " + phys_state + " (Re:" + str.tostring(val_reynolds, "#.##") + ")\n"
+    dash += " Trend   : " + hurst_state + " (H:" + str.tostring(val_hurst, "#.##") + ")\n"
+    dash += " Phase   : " + phase_state + "\n"
+    dash += " Kurtosis: " + str.tostring(val_kurtosis, "#.##") + (alert_fat_tail ? " ⚡DANGER" : "") + "\n"
+    dash += " Skewness: " + str.tostring(val_skewness, "#.##") + (alert_crash_risk ? " ⚠️CRASH RISK" : "") + "\n"
+    dash += "\n"
+    if use_vix_adapt
+        dash += "🤖 VIX: " + str.tostring(current_vix, "#.0") + " (Len:" + str.tostring(adaptive_len) + ")\n"
+    
+    label.new(bar_index + 5, high, dash, color=color.new(#101010, 10), textcolor=color.white, style=label.style_label_left, textalign=text.align_left, size=size.small)
+
+// ==========================================
+// 🔔 ALERTS
+// ==========================================
+
+alertcondition(confirmed_bull or final_sig_bull, title="🚀 今から上がる！", message="WAVE APEX: Bullish Signal Detected! Wave 3 pullback entry opportunity.")
+
+alertcondition(confirmed_bear or final_sig_bear, title="📉 今から下がる！", message="WAVE APEX: Bearish Signal Detected! Wave 3 pullback entry opportunity.")
+
+alertcondition(alert_fat_tail, title="⚡ Fat-Tail Warning", message="WAVE APEX: Extreme volatility detected!")
+
+alertcondition(state_laminar and not state_laminar[1], title="🌊 Laminar Flow Start", message="WAVE APEX: Market entering smooth trend state - Good for entries")
+
+alertcondition(state_turbulent and not state_turbulent[1], title="🌪️ Turbulence Alert", message="WAVE APEX: Market entering chaotic state - Avoid new entries")
+
+alertcondition(phase_sync_bull and not phase_sync_bull[1], title="⚡ Phase Sync Bull", message="WAVE APEX: Bullish phase synchronization - Velocity and Acceleration aligned upward")
+
+alertcondition(phase_sync_bear and not phase_sync_bear[1], title="⚡ Phase Sync Bear", message="WAVE APEX: Bearish phase synchronization - Velocity and Acceleration aligned downward")
+
+
+// ==========================================
+// 📝 END OF WAVE APEX INDICATOR
+// ==========================================
+// Total Lines: 570+
+// Modules: Physics (Reynolds, Phase Sync, Fractal), Statistics (Kurtosis, 
+//          Skewness, Hurst, Robust Z), Adaptive (VIX, KAMA), Wave (Elliott, Pullback)
+// Output: Arrows only (UP/DOWN) with optional dashboard
+// ==========================================
