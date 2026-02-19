@@ -3920,6 +3920,13 @@
                         userCred = await window.firebase.createUserWithEmailAndPassword(auth, email, pass);
                         const name = document.getElementById('aName').value.trim() || email.split('@')[0];
                         await window.firebase.updateProfile(userCred.user, { displayName: name });
+                        // Save User Profile to Firestore (for Admin listing)
+                        await window.firebase.setDoc(window.firebase.doc(db, 'users', userCred.user.uid), {
+                            name: name,
+                            email: email,
+                            createdAt: new Date().toISOString(),
+                            role: email === 'matsukan0207@gmail.com' ? 'admin' : 'user'
+                        });
                         // Initial Data for Cloud
                         await saveD('tags', [{ name: 'お気に入り', color: '#f97316' }, { name: 'マスタリング', color: '#a855f7' }, { name: 'ミキシング', color: '#22c55e' }]);
                     } else {
@@ -4490,23 +4497,39 @@
             console.log("Admin setting disabled");
         }
 
-        function renderAdmin() {
+        async function renderAdmin() {
             if (!CU.isAdmin) return;
-            const users = getUsers();
-            const uList = Object.values(users);
+            let uList = [];
 
+            if (db) {
+                try {
+                    const snap = await window.firebase.getDocs(window.firebase.collection(db, 'users'));
+                    uList = snap.docs.map(d => ({ uid: d.id, ...d.data() }));
+                } catch (e) { console.error(e); toast('❌ 取得失敗'); return; }
+            } else {
+                const users = getUsers();
+                uList = Object.values(users).map(u => {
+                    const uid = Object.keys(users).find(k => users[k] === u);
+                    return { uid, ...u };
+                });
+            }
 
             document.getElementById('adUsers').textContent = uList.length;
-            let tp = 0, ti = 0; uList.forEach(u => {
-                const uid2 = Object.keys(users).find(k => users[k] === u);
-                const pd = JSON.parse(localStorage.getItem(uKey(uid2, 'plugins')) || '[]'); tp += pd.length; ti += pd.filter(p => p.installed).length;
-            });
+
+            // Stats calculation (Skip plugin count for Cloud to avoid N+1 reads for now, or fetch if small)
+            // For Local, we can calc. For Cloud, maybe just show 0 or implement aggregation later.
+            let tp = 0, ti = 0;
+            if (!db) {
+                uList.forEach(u => {
+                    const pd = JSON.parse(localStorage.getItem(uKey(u.uid, 'plugins')) || '[]');
+                    tp += pd.length; ti += pd.filter(p => p.installed).length;
+                });
+            }
             document.getElementById('adPlugins').textContent = tp; document.getElementById('adInstalled').textContent = ti;
 
             document.getElementById('adminUserList').innerHTML = uList.map(u => {
-                const uid2 = Object.keys(users).find(k => users[k] === u);
-                const isMe = uid2 === CU.uid;
-                const isAdmin = u.email === 'matsukan0207@gmail.com';
+                const isMe = u.uid === CU.uid;
+                const isAdmin = u.email === 'matsukan0207@gmail.com' || u.role === 'admin';
                 return `<div class="flex items-center justify-between bg-s-700 rounded-lg p-3">
                     <div>
                         <p class="text-sm text-white font-medium flex items-center gap-2">${esc(u.name)} ${isAdmin ? '<span class="text-[0.6rem] bg-n-o/20 text-n-o border border-n-o/30 px-1 rounded">ADMIN</span>' : ''}</p>
@@ -4514,17 +4537,33 @@
                     </div>
                     <div class="flex items-center gap-3">
                         <div class="text-right"><p class="text-xs text-gray-400">${new Date(u.createdAt).toLocaleDateString('ja-JP')}</p></div>
-                        ${!isMe ? `<button onclick="viewUser('${uid2}', '${esc(u.name)}')" class="px-2 py-1 text-xs rounded bg-s-600 hover:bg-a-500 text-gray-300 hover:text-white transition-colors border border-gray-600">👁️ 見る</button>` : '<span class="text-xs text-gray-600 px-2">自分</span>'}
+                        ${!isMe ? `<button onclick="viewUser('${u.uid}', '${esc(u.name)}')" class="px-2 py-1 text-xs rounded bg-s-600 hover:bg-a-500 text-gray-300 hover:text-white transition-colors border border-gray-600">👁️ 見る</button>` : '<span class="text-xs text-gray-600 px-2">自分</span>'}
                     </div>
                 </div>`;
             }).join('');
         }
 
-        function viewUser(uid, name) {
+        async function viewUser(uid, name) {
             viewingUser = uid;
-            plugins = JSON.parse(localStorage.getItem(uKey(uid, 'plugins')) || '[]');
-            wishlist = JSON.parse(localStorage.getItem(uKey(uid, 'wishlist')) || '[]');
-            tags = JSON.parse(localStorage.getItem(uKey(uid, 'tags')) || '[]');
+
+            if (db) {
+                // Cloud Mode: Fetch data
+                // Need to implement loadD_Cloud for specific UID? 
+                // Currently loadD_Cloud uses `currentUserUID`.
+                // Let's implement a targeted fetch here.
+                try {
+                    const pSnap = await window.firebase.getDoc(window.firebase.doc(db, 'users', uid, 'data', 'plugins'));
+                    plugins = pSnap.exists() ? (pSnap.data().list || []) : [];
+                    const wSnap = await window.firebase.getDoc(window.firebase.doc(db, 'users', uid, 'data', 'wishlist'));
+                    wishlist = wSnap.exists() ? (wSnap.data().list || []) : [];
+                    const tSnap = await window.firebase.getDoc(window.firebase.doc(db, 'users', uid, 'data', 'tags'));
+                    tags = tSnap.exists() ? (tSnap.data().list || []) : [];
+                } catch (e) { console.error(e); toast('❌ データ取得失敗'); return; }
+            } else {
+                plugins = JSON.parse(localStorage.getItem(uKey(uid, 'plugins')) || '[]');
+                wishlist = JSON.parse(localStorage.getItem(uKey(uid, 'wishlist')) || '[]');
+                tags = JSON.parse(localStorage.getItem(uKey(uid, 'tags')) || '[]');
+            }
 
             // UI Updates for View Mode
             document.getElementById('viewingBanner').classList.remove('hidden');
