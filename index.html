@@ -3785,7 +3785,7 @@
         // 🔴🔴🔴 FIREBASE CONFIGURATION 🔴🔴🔴
         // ここにFirebaseプロジェクトの設定を貼り付けてください
         const firebaseConfig = {
-            apiKey: "AIzaSyC_klE1HnMBbmJA48oCuYjUp3Lg8zgecfY",
+            apiKey: "YOUR_API_KEY",
             authDomain: "pluginrecoverymanager.firebaseapp.com",
             projectId: "pluginrecoverymanager",
             storageBucket: "pluginrecoverymanager.firebasestorage.app",
@@ -4037,13 +4037,7 @@
         function logout() { localStorage.removeItem(K.session); CU = null; location.reload(); }
 
 
-        // Helper: SHA-256 for local auth
-        async function sha256(message) {
-            const msgBuffer = new TextEncoder().encode(message);
-            const hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer);
-            const hashArray = Array.from(new Uint8Array(hashBuffer));
-            return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
-        }
+
 
         async function checkSession() {
             const uid = localStorage.getItem(K.session);
