@@ -3879,6 +3879,15 @@
                 // users/{uid}/data/{t} -> { list: [...] }
                 try {
                     await window.firebase.setDoc(window.firebase.doc(db, 'users', currentUserUID, 'data', t), { list: d });
+
+                    if (t === 'plugins') {
+                        // Update User Profile Stats
+                        await window.firebase.setDoc(window.firebase.doc(db, 'users', currentUserUID), {
+                            pluginCount: d.length,
+                            installedCount: d.filter(p => p.installed).length,
+                            lastUpdated: new Date().toISOString()
+                        }, { merge: true });
+                    }
                 } catch (e) { console.error('Cloud Save Error', e); }
             }
             // Always save local as backup/cache
@@ -3978,6 +3987,18 @@
 
             if (!tags.length) tags = [{ name: 'お気に入り', color: '#f97316' }, { name: 'マスタリング', color: '#a855f7' }, { name: 'ミキシング', color: '#22c55e' }];
             if (email === 'matsukan0207@gmail.com') { CU.isAdmin = true; }
+
+            // Sync Profile (Cloud Mode): Ensure User Doc exists for Admin List
+            if (db && !CU.isGuest) {
+                try {
+                    await window.firebase.setDoc(window.firebase.doc(db, 'users', uid), {
+                        name: name || email.split('@')[0],
+                        email: email,
+                        role: (email === 'matsukan0207@gmail.com') ? 'admin' : 'user',
+                        lastLogin: new Date().toISOString()
+                    }, { merge: true });
+                } catch (e) { console.error('Profile Sync Error', e); }
+            }
 
             document.getElementById('authScreen').classList.add('hidden'); document.getElementById('appScreen').classList.remove('hidden');
             document.getElementById('userEmail').textContent = CU.email; document.getElementById('settEmail').textContent = CU.email; document.getElementById('settName').textContent = CU.name;
@@ -4554,10 +4575,16 @@
 
             document.getElementById('adUsers').textContent = uList.length;
 
-            // Stats calculation (Skip plugin count for Cloud to avoid N+1 reads for now, or fetch if small)
-            // For Local, we can calc. For Cloud, maybe just show 0 or implement aggregation later.
+            // Stats calculation
             let tp = 0, ti = 0;
-            if (!db) {
+            if (db) {
+                // Cloud Mode: Sum from profiles
+                uList.forEach(u => {
+                    tp += (u.pluginCount || 0);
+                    ti += (u.installedCount || 0);
+                });
+            } else {
+                // Local Mode
                 uList.forEach(u => {
                     const pd = JSON.parse(localStorage.getItem(uKey(u.uid, 'plugins')) || '[]');
                     tp += pd.length; ti += pd.filter(p => p.installed).length;
