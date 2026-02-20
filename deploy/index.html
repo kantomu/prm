@@ -1,0 +1,2969 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1.0">
+    <title>Plugin Recovery Manager</title>
+    <meta name="description" content="DTMプラグイン管理ツール — ライセンス・アカウント情報を一元管理">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>tailwindcss.config = { darkMode: 'class', theme: { extend: { colors: { s: { 900: '#0d0d12', 800: '#14141c', 700: '#1c1c28', 600: '#242434' }, a: { 400: '#38bdf8', 500: '#0ea5e9', 600: '#0284c7' }, n: { o: '#f97316', b: '#38bdf8' } } } } }</script>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400&display=swap"
+        rel="stylesheet">
+    <!-- Firebase SDK -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+        import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, onAuthStateChanged, updateProfile, sendPasswordResetEmail } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
+        import { getFirestore, doc, setDoc, getDoc, updateDoc, arrayUnion, arrayRemove, collection, getDocs } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+
+        window.firebase = { initializeApp, getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, onAuthStateChanged, updateProfile, getFirestore, doc, setDoc, getDoc, updateDoc, arrayUnion, arrayRemove, collection, getDocs, sendPasswordResetEmail };
+    </script>
+    <style>
+        * {
+            font-family: 'Inter', sans-serif
+        }
+
+        body {
+            background: #0d0d12;
+            color-scheme: dark
+        }
+
+        input,
+        select,
+        textarea {
+            background-color: #1c1c28 !important;
+            color: #e2e8f0 !important
+        }
+
+        ::-webkit-scrollbar {
+            width: 6px
+        }
+
+        ::-webkit-scrollbar-track {
+            background: #14141c
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: #38bdf8;
+            border-radius: 3px
+        }
+
+        .card-h {
+            transition: transform .2s, box-shadow .2s
+        }
+
+        .card-h:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 32px rgba(56, 189, 248, .12)
+        }
+
+        .glow {
+            box-shadow: 0 0 20px rgba(56, 189, 248, .15)
+        }
+
+        .fi {
+            animation: fi .3s ease
+        }
+
+        @keyframes fi {
+            from {
+                opacity: 0;
+                transform: translateY(8px)
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0)
+            }
+        }
+
+        .mb {
+            backdrop-filter: blur(6px)
+        }
+
+        input:focus,
+        select:focus,
+        textarea:focus {
+            border-color: #38bdf8 !important;
+            box-shadow: 0 0 0 2px rgba(56, 189, 248, .25)
+        }
+
+        .pb-fill {
+            background: linear-gradient(90deg, #0ea5e9, #38bdf8, #f97316);
+            background-size: 200% 100%;
+            animation: sh 3s ease infinite
+        }
+
+        @keyframes sh {
+            0% {
+                background-position: 200% 0
+            }
+
+            100% {
+                background-position: -200% 0
+            }
+        }
+
+        .bdg {
+            font-size: .65rem;
+            padding: 2px 8px;
+            border-radius: 9999px;
+            font-weight: 600;
+            letter-spacing: .05em
+        }
+
+        .tag {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            font-size: .65rem;
+            padding: 2px 8px;
+            border-radius: 9999px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: opacity .2s
+        }
+
+        .tag:hover {
+            opacity: .8
+        }
+
+        .side-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 10px 16px;
+            border-radius: 10px;
+            font-size: .85rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: background .2s, color .2s;
+            color: #94a3b8
+        }
+
+        .side-item:hover,
+        .side-item.active {
+            background: rgba(56, 189, 248, .1);
+            color: #38bdf8
+        }
+
+        .side-item.active {
+            border-left: 3px solid #38bdf8
+        }
+
+        .ac-drop {
+            position: absolute;
+            top: 100%;
+            left: 0;
+            right: 0;
+            z-index: 60;
+            max-height: 220px;
+            overflow-y: auto;
+            background: #1c1c28;
+            border: 1px solid #38bdf830;
+            border-radius: 10px;
+            margin-top: 4px;
+            display: none
+        }
+
+        .ac-drop.show {
+            display: block
+        }
+
+        .ac-item {
+            padding: 8px 12px;
+            cursor: pointer;
+            font-size: .8rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid #ffffff08;
+            transition: background .15s
+        }
+
+        .ac-item:hover,
+        .ac-item.sel {
+            background: #38bdf815
+        }
+
+        .ac-item .ac-name {
+            color: #e2e8f0;
+            font-weight: 500
+        }
+
+        .ac-item .ac-maker {
+            color: #64748b;
+            font-size: .7rem
+        }
+
+        .ac-item .ac-badge {
+            font-size: .6rem;
+            padding: 1px 6px;
+            border-radius: 8px;
+            background: #38bdf815;
+            color: #38bdf8
+        }
+
+        .autofill-flash {
+            animation: flashGreen .5s ease;
+        }
+
+        .ai-searching {
+            position: relative;
+        }
+
+        .ai-searching::after {
+            content: '';
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            height: 2px;
+            background: linear-gradient(90deg, transparent, #38bdf8, #a855f7, transparent);
+            animation: aiScan 1.5s ease-in-out infinite;
+        }
+
+        @keyframes aiScan {
+
+            0%,
+            100% {
+                transform: translateX(-100%)
+            }
+
+            50% {
+                transform: translateX(100%)
+            }
+        }
+
+        .ac-item .ai-badge {
+            font-size: .55rem;
+            background: linear-gradient(135deg, #a855f7, #38bdf8);
+            color: white;
+            padding: 1px 6px;
+            border-radius: 9999px;
+            font-weight: 600;
+        }
+
+        #licenseResults .license-card {
+            background: var(--s-700);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            border-radius: 8px;
+            padding: 12px;
+            margin-bottom: 8px;
+        }
+
+        #licenseResults .license-card .lk {
+            font-family: 'JetBrains Mono', monospace;
+            color: #38bdf8;
+            word-break: break-all;
+        }
+
+        /* View Mode Styling */
+        body.view-mode #topActions .view-hide {
+            display: none !important;
+        }
+
+        body.view-mode .group-hover\:text-gray-300:hover {
+            color: inherit;
+        }
+
+        @keyframes flash {
+            0% {
+                box-shadow: 0 0 0 2px #38bdf860
+            }
+
+            100% {
+                box-shadow: none
+            }
+        }
+
+        /* Sidebar Progress Ring */
+        .progress-ring-circle {
+            transition: stroke-dashoffset 0.7s cubic-bezier(0.4, 0, 0.2, 1);
+            transform: rotate(-90deg);
+            transform-origin: 50% 50%;
+        }
+
+        /* === DYNAMIC UI OVERHAUL === */
+        /* Chips UI */
+        .chip-scroll {
+            display: flex;
+            overflow-x: auto;
+            gap: 8px;
+            padding-bottom: 4px;
+            scrollbar-width: none;
+            -ms-overflow-style: none;
+            mask-image: linear-gradient(to right, black 90%, transparent 100%);
+        }
+
+        .chip-scroll::-webkit-scrollbar {
+            display: none;
+        }
+
+        .chip {
+            flex-shrink: 0;
+            padding: 6px 14px;
+            border-radius: 9999px;
+            font-size: 0.75rem;
+            background: #1c1c28;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            color: #94a3b8;
+            cursor: pointer;
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+            user-select: none;
+        }
+
+        .chip.active {
+            background: rgba(56, 189, 248, 0.2);
+            border-color: #38bdf8;
+            color: #38bdf8;
+            font-weight: 600;
+            box-shadow: 0 0 15px rgba(56, 189, 248, 0.15);
+        }
+
+        .chip:hover {
+            border-color: rgba(255, 255, 255, 0.3);
+            color: white;
+            transform: translateY(-1px);
+        }
+
+        .chip:active {
+            transform: scale(0.95);
+        }
+
+        /* Bottom Sheet (Mobile) */
+        @media (max-width: 640px) {
+            .modal-bg {
+                align-items: flex-end !important;
+            }
+
+            .modal-content {
+                width: 100% !important;
+                max-width: 100% !important;
+                border-radius: 20px 20px 0 0 !important;
+                margin: 0 !important;
+                max-height: 85vh !important;
+                transform: translateY(100%);
+                transition: transform 0.3s cubic-bezier(0.2, 0.9, 0.3, 1);
+                animation: slideUp 0.3s cubic-bezier(0.2, 0.9, 0.3, 1) forwards;
+            }
+
+            @keyframes slideUp {
+                from {
+                    transform: translateY(100%);
+                }
+
+                to {
+                    transform: translateY(0);
+                }
+            }
+
+            .modal-drag {
+                width: 40px;
+                height: 4px;
+                background: rgba(255, 255, 255, 0.2);
+                border-radius: 2px;
+                margin: 8px auto;
+            }
+        }
+
+        /* Dynamic Background Blobs */
+        .bg-dynamic-wrap {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: -1;
+            overflow: hidden;
+            background: #0d0d12;
+        }
+
+        .blob {
+            position: absolute;
+            border-radius: 50%;
+            filter: blur(80px);
+            opacity: 0.4;
+            mix-blend-mode: screen;
+            animation: float 20s infinite alternate cubic-bezier(0.45, 0, 0.55, 1);
+        }
+
+        .blob-1 {
+            width: 500px;
+            height: 500px;
+            background: radial-gradient(circle, #38bdf8 0%, transparent 70%);
+            top: -100px;
+            left: -100px;
+        }
+
+        .blob-2 {
+            width: 600px;
+            height: 600px;
+            background: radial-gradient(circle, #f97316 0%, transparent 70%);
+            bottom: -100px;
+            right: -100px;
+            animation-duration: 25s;
+            animation-delay: -5s;
+        }
+
+        .blob-3 {
+            width: 400px;
+            height: 400px;
+            background: radial-gradient(circle, #a855f7 0%, transparent 70%);
+            top: 40%;
+            left: 30%;
+            animation-duration: 30s;
+            animation-delay: -10s;
+        }
+
+        @keyframes float {
+            0% {
+                transform: translate(0, 0) rotate(0deg) scale(1);
+            }
+
+            100% {
+                transform: translate(100px, 50px) rotate(90deg) scale(1.1);
+            }
+        }
+
+        /* Glassmorphism Refinements */
+        .bg-s-800 {
+            background: rgba(20, 20, 28, 0.75) !important;
+            backdrop-filter: blur(12px) !important;
+            -webkit-backdrop-filter: blur(12px) !important;
+            border: 1px solid rgba(255, 255, 255, 0.05) !important;
+        }
+
+        .card-h:hover {
+            background: rgba(24, 24, 34, 0.85) !important;
+            border-color: rgba(56, 189, 248, 0.2) !important;
+            box-shadow: 0 12px 40px rgba(0, 0, 0, 0.3) !important;
+        }
+
+        /* Staggered Animation */
+        .stagger-item {
+            opacity: 0;
+            animation: fi 0.5s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+        }
+    </style>
+</head>
+
+<body class="min-h-screen text-gray-200">
+    <div class="bg-dynamic-wrap">
+        <div class="blob blob-1"></div>
+        <div class="blob blob-2"></div>
+        <div class="blob blob-3"></div>
+    </div>
+
+    <!-- AUTH SCREEN -->
+    <div id="authScreen" class="min-h-screen flex items-center justify-center p-4">
+        <div class="w-full max-w-md">
+            <div class="text-center mb-8 fi">
+                <div
+                    class="w-16 h-16 mx-auto rounded-2xl bg-gradient-to-br from-a-500 to-n-o flex items-center justify-center text-white font-bold text-2xl shadow-lg mb-4">
+                    P</div>
+                <h1 class="text-2xl font-bold text-white">Plugin Recovery Manager</h1>
+                <p class="text-sm text-gray-500 mt-1">DTMプラグイン管理ツール</p>
+            </div>
+            <div class="bg-s-800 rounded-2xl border border-gray-800/50 p-6 fi">
+                <div class="flex mb-6 bg-s-700 rounded-lg p-1">
+                    <button onclick="showAuth('login')" id="authLoginTab"
+                        class="flex-1 py-2 text-xs font-semibold rounded-md bg-a-500 text-white transition-all">ログイン</button>
+                    <button onclick="showAuth('register')" id="authRegTab"
+                        class="flex-1 py-2 text-xs font-semibold rounded-md text-gray-400 transition-all">新規登録</button>
+                </div>
+                <form id="authForm" onsubmit="handleAuth(event)" class="space-y-4">
+                    <div id="nameField" class="hidden"><label class="block text-xs text-gray-400 mb-1">表示名</label>
+                        <input id="aName"
+                            class="w-full px-3 py-2 text-sm bg-s-700 border border-gray-700/50 rounded-lg outline-none"
+                            placeholder="Your Name">
+                    </div>
+                    <div><label class="block text-xs text-gray-400 mb-1">メールアドレス</label>
+                        <input id="aEmail" type="email" required
+                            class="w-full px-3 py-2 text-sm bg-s-700 border border-gray-700/50 rounded-lg outline-none"
+                            placeholder="user@example.com">
+                    </div>
+                    <div class="relative"><label class="block text-xs text-gray-400 mb-1">パスワード</label>
+                        <input id="aPass" type="password" required minlength="6"
+                            class="w-full px-3 py-2 pr-10 text-sm bg-s-700 border border-gray-700/50 rounded-lg outline-none"
+                            placeholder="6文字以上">
+                        <button type="button" onclick="toggleAP()"
+                            class="absolute right-2 top-[30px] text-gray-500 hover:text-a-400 text-sm"
+                            id="tAPB">👁</button>
+                    </div>
+                    <div id="forgotPassLink" class="text-right">
+                        <button type="button" onclick="resetPassword()"
+                            class="text-[10px] text-gray-500 hover:text-a-400 transition-colors">パスワードをお忘れですか？</button>
+                    </div>
+                    <p id="authError" class="text-xs text-red-400 hidden"></p>
+                    <button type="submit"
+                        class="w-full py-2.5 text-sm font-semibold rounded-lg bg-a-500 hover:bg-a-600 text-white transition-colors shadow-md"
+                        id="authBtn">ログイン</button>
+                    <div class="relative flex py-2 items-center">
+                        <div class="flex-grow border-t border-gray-700"></div>
+                        <span class="flex-shrink-0 mx-4 text-gray-500 text-xs">または</span>
+                        <div class="flex-grow border-t border-gray-700"></div>
+                    </div>
+                    <button type="button" onclick="loginGuest()"
+                        class="w-full py-2.5 text-sm font-semibold rounded-lg bg-s-600 hover:bg-s-500 text-gray-300 hover:text-white transition-colors border border-gray-700">
+                        ゲストとして利用する
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- MAIN APP -->
+    <div id="appScreen" class="hidden">
+        <!-- SIDEBAR -->
+        <aside id="sidebar" class="hidden">
+            <div class="flex items-center gap-2 px-4 mb-6">
+                <div
+                    class="w-8 h-8 rounded-lg bg-gradient-to-br from-a-500 to-n-o flex items-center justify-center text-white font-bold text-xs">
+                    P</div>
+                <span class="text-sm font-bold text-white">PRM</span>
+                <button onclick="toggleSidebar()" class="ml-auto lg:hidden text-gray-500 hover:text-white">✕</button>
+            </div>
+            <nav class="flex-1 px-3 space-y-1">
+                <div onclick="switchTab('owned')" class="side-item active" data-tab="owned">🎹 所有プラグイン</div>
+                <div onclick="switchTab('wishlist')" class="side-item" data-tab="wishlist">⭐ ウィッシュリスト</div>
+                <div onclick="switchTab('settings')" class="side-item" data-tab="settings">⚙️ 設定</div>
+                <div onclick="switchTab('admin')" class="side-item hidden" data-tab="admin" id="adminNav">👑 管理者</div>
+            </nav>
+            <!-- Sidebar Progress Ring -->
+            <div id="sidebarProgress" class="px-4 py-3 flex flex-col items-center" style="display:none">
+                <div class="relative" style="width:72px;height:72px">
+                    <svg width="72" height="72" viewBox="0 0 72 72">
+                        <circle cx="36" cy="36" r="30" fill="none" stroke="#1c1c28" stroke-width="5" />
+                        <circle id="progRing" class="progress-ring-circle" cx="36" cy="36" r="30" fill="none"
+                            stroke="url(#ringGrad)" stroke-width="5" stroke-linecap="round" stroke-dasharray="188.5"
+                            stroke-dashoffset="188.5" />
+                        <defs>
+                            <linearGradient id="ringGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                                <stop offset="0%" stop-color="#0ea5e9" />
+                                <stop offset="100%" stop-color="#f97316" />
+                            </linearGradient>
+                        </defs>
+                    </svg>
+                    <div class="absolute inset-0 flex items-center justify-center">
+                        <span id="progRingPct" class="text-xs font-bold text-gray-300">0%</span>
+                    </div>
+                </div>
+                <p class="text-[0.6rem] text-gray-500 mt-1.5 text-center">復旧率</p>
+            </div>
+            <div class="px-4 pt-3 border-t border-gray-800/50">
+                <p class="text-xs text-gray-500 truncate" id="userEmail"></p>
+                <button onclick="logout()"
+                    class="mt-2 w-full text-xs text-gray-500 hover:text-red-400 transition-colors text-left">🚪
+                    ログアウト</button>
+            </div>
+        </aside>
+
+        <!-- HEADER (mobile) -->
+        <header
+            class="lg:hidden sticky top-0 z-20 bg-s-900/90 border-b border-gray-800/50 backdrop-blur-md px-4 py-3 flex items-center justify-between">
+
+            <span class="text-sm font-bold text-white">Plugin Recovery Manager</span>
+            <!-- <button onclick="openModal()" class="text-a-400 text-sm font-semibold">＋</button> -->
+        </header>
+
+        <!-- CONTENT -->
+        <div class="min-h-screen">
+            <div class="max-w-6xl mx-auto px-4 py-5 pb-24 lg:pb-5 space-y-5">
+
+                <!-- TOP BAR -->
+                <!-- TOP BAR -->
+                <div class="flex flex-col lg:flex-row items-center justify-between gap-4 mb-6">
+                    <!-- Left: Logo & Nav -->
+                    <div class="flex items-center gap-6 w-full lg:w-auto justify-between lg:justify-start">
+                        <!-- Logo (Desktop only) -->
+                        <div class="hidden lg:flex items-center gap-2 cursor-pointer select-none"
+                            onclick="switchTab('owned')">
+                            <div
+                                class="w-8 h-8 rounded-lg bg-gradient-to-br from-a-500 to-n-o flex items-center justify-center text-white font-bold text-xs">
+                                P</div>
+                            <span class="text-lg font-bold text-white">PRM</span>
+                        </div>
+
+                        <!-- Nav (Desktop only) -->
+                        <nav
+                            class="hidden lg:flex items-center gap-1 bg-s-800/50 p-1 rounded-xl border border-gray-700/30">
+                            <button id="navTopOwned" onclick="switchTab('owned')"
+                                class="top-nav-btn px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors text-white bg-s-600 shadow-sm">🎹
+                                所有</button>
+                            <button id="navTopWishlist" onclick="switchTab('wishlist')"
+                                class="top-nav-btn px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors text-gray-400 hover:text-white hover:bg-s-700">⭐
+                                欲しい</button>
+                            <button id="navTopSettings" onclick="switchTab('settings')"
+                                class="top-nav-btn px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors text-gray-400 hover:text-white hover:bg-s-700">⚙️
+                                設定</button>
+                            <button id="navTopAdmin" onclick="switchTab('admin')"
+                                class="top-nav-btn px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors text-gray-400 hover:text-white hover:bg-s-700 hidden">👑
+                                管理者</button>
+                        </nav>
+                    </div>
+
+                    <!-- Right: Actions -->
+                    <div id="topActions" class="flex items-center gap-2 ml-auto">
+                        <div id="viewingBanner"
+                            class="hidden flex items-center gap-3 bg-indigo-500/20 border border-indigo-500/30 px-4 py-1.5 rounded-lg mr-2">
+                            <span class="text-xs text-indigo-300 font-bold animate-pulse">👁️ 閲覧モード: <span
+                                    id="viewingName" class="text-indigo-200"></span></span>
+                            <button onclick="exitView()"
+                                class="text-xs bg-indigo-600 hover:bg-indigo-500 text-white px-3 py-1 rounded transition-colors">終了</button>
+                        </div>
+
+                        <button id="adminActBtn" onclick="switchTab('admin')"
+                            class="hidden px-3 py-1.5 text-xs rounded-lg bg-n-o/20 hover:bg-n-o/30 border border-n-o/40 text-n-o font-bold transition-colors">👑
+                            管理者</button>
+                        <button onclick="openExportModal()"
+                            class="px-3 py-1.5 text-xs rounded-lg bg-s-700 hover:bg-s-600 border border-gray-700/50 text-gray-300 hover:text-white transition-colors">📤
+                            エクスポート</button>
+                        <button onclick="openImportModal()"
+                            class="px-3 py-1.5 text-xs rounded-lg bg-s-700 hover:bg-s-600 border border-gray-700/50 text-gray-300 hover:text-white transition-colors">📥
+                            インポート</button>
+                    </div>
+                </div>
+
+                <!-- TAB: OWNED -->
+                <div id="tabOwned">
+                    <!-- Layout: Ring (Left) + Filters (Right) -->
+                    <section class="mb-4 flex flex-col md:flex-row gap-4 items-stretch">
+                        <!-- Left: Circular Progress -->
+                        <div
+                            class="bg-s-800 rounded-xl border border-gray-800/50 p-4 flex flex-col items-center justify-center shrink-0 w-full md:w-auto min-w-[140px]">
+                            <div class="relative w-20 h-20">
+                                <svg class="w-full h-full transform -rotate-90" viewBox="0 0 100 100">
+                                    <circle cx="50" cy="50" r="42" fill="none" stroke="#1c1c28" stroke-width="8" />
+                                    <circle id="mainProgRing" class="transition-all duration-1000 ease-out" cx="50"
+                                        cy="50" r="42" fill="none" stroke="url(#ringGradMain)" stroke-width="8"
+                                        stroke-linecap="round" stroke-dasharray="263.9" stroke-dashoffset="263.9" />
+                                    <defs>
+                                        <linearGradient id="ringGradMain" x1="0%" y1="0%" x2="100%" y2="100%">
+                                            <stop offset="0%" stop-color="#0ea5e9" />
+                                            <stop offset="100%" stop-color="#f97316" />
+                                        </linearGradient>
+                                    </defs>
+                                </svg>
+                                <div class="absolute inset-0 flex items-center justify-center">
+                                    <span id="mainProgPct" class="text-lg font-bold text-white">0%</span>
+                                </div>
+                            </div>
+                            <div class="mt-2 text-center">
+                                <p class="text-xs font-bold text-gray-400"><span id="mainProgTxt" class="text-white">0 /
+                                        0</span> 完了</p>
+                            </div>
+                        </div>
+
+                        <!-- Right: Filters -->
+                        <section class="flex-1 bg-s-800 rounded-xl border border-gray-800/50 p-3 flex flex-col gap-2">
+                            <!-- Search & Sort Row -->
+                            <div class="flex gap-2">
+                                <div class="relative flex-1">
+                                    <span
+                                        class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 text-sm">🔍</span>
+                                    <input id="searchInp" type="text" placeholder="プラグインを検索..." oninput="render()"
+                                        class="w-full pl-9 pr-3 py-2 text-sm bg-s-700 border border-gray-700/50 rounded-lg outline-none placeholder-gray-600 focus:bg-s-600 transition-colors">
+                                </div>
+                                <button onclick="toggleSort()" id="sortBtn"
+                                    class="px-3 rounded-lg bg-s-700 border border-gray-700/50 text-gray-400 text-xs hover:text-white transition-colors whitespace-nowrap">
+                                    ⇅ <span id="sortLabel">重要度順</span>
+                                </button>
+                            </div>
+
+                            <!-- Chips: Category -->
+                            <div class="chip-scroll" id="chipRowCat">
+                                <div class="chip active" onclick="setChip('fCat', '')" data-target="fCat" data-val="">
+                                    全カテゴリ</div>
+                                <div class="chip" onclick="setChip('fCat', 'インストゥルメント')" data-target="fCat"
+                                    data-val="インストゥルメント">🎹 音源</div>
+                                <div class="chip" onclick="setChip('fCat', 'エフェクト')" data-target="fCat"
+                                    data-val="エフェクト">🎛️ エフェクト</div>
+                                <div class="chip" onclick="setChip('fCat', 'ユーティリティ')" data-target="fCat"
+                                    data-val="ユーティリティ">🛠️ ツール</div>
+                                <div class="chip" onclick="setChip('fCat', 'その他')" data-target="fCat" data-val="その他">📦
+                                    その他</div>
+                            </div>
+
+                            <!-- Chips: Status/Priority -->
+                            <div class="chip-scroll" id="chipRowSub">
+                                <div class="chip" onclick="setChip('fStat', '0')" data-target="fStat" data-val="0">📥
+                                    未インストール</div>
+                                <div class="chip" onclick="setChip('fPri', '高(即復旧)')" data-target="fPri"
+                                    data-val="高(即復旧)">🔥 優先:高</div>
+                                <div class="chip" onclick="setChip('fAuth', 'iLok USB')" data-target="fAuth"
+                                    data-val="iLok USB">🔑 iLok USB</div>
+                                <div class="chip" onclick="setChip('fAuth', 'Waves')" data-target="fAuth"
+                                    data-val="Waves">🌊 Waves</div>
+                                <div class="chip" onclick="setChip('fAuth', '独自認証')" data-target="fAuth"
+                                    data-val="独自認証">🛡️ 独自認証</div>
+                                <div class="chip" onclick="setChip('fAuth', 'Native Access')" data-target="fAuth"
+                                    data-val="Native Access">📦 Native</div>
+                                <button onclick="clearF()"
+                                    class="chip border-red-500/30 text-red-400 hover:bg-red-500/10">✕ クリア</button>
+                            </div>
+
+                            <!-- Chips: Tags (Multi-select) -->
+                            <div class="chip-scroll" id="chipRowTag"></div>
+                            <div id="filterSummary" class="px-1 pt-2 pb-0 text-xs text-a-400 font-mono hidden"></div>
+
+                            <!-- Hidden Selects -->
+                            <div class="hidden">
+                                <select id="fCat" onchange="render()">
+                                    <option value="">All</option>
+                                    <option>インストゥルメント</option>
+                                    <option>エフェクト</option>
+                                    <option>ユーティリティ</option>
+                                    <option>その他</option>
+                                </select>
+                                <select id="fPri" onchange="render()">
+                                    <option value="">All</option>
+                                    <option>高(即復旧)</option>
+                                    <option>中</option>
+                                    <option>低</option>
+                                </select>
+                                <select id="fAuth" onchange="render()">
+                                    <option value="">All</option>
+                                    <option>iLok USB</option>
+                                    <option>iLok Cloud</option>
+                                    <option>Steinberg</option>
+                                    <option>Native Access</option>
+                                    <option>Waves</option>
+                                    <option>独自認証</option>
+                                    <option>その他</option>
+                                </select>
+                                <select id="fStat" onchange="render()">
+                                    <option value="">All</option>
+                                    <option value="1">Installed</option>
+                                    <option value="0">Uninstalled</option>
+                                </select>
+                                <select id="fTag" onchange="render()">
+                                    <option value="">All</option>
+                                </select>
+                                <select id="fSort" onchange="render()">
+                                    <option value="pri">Ex</option>
+                                    <option value="name">N</option>
+                                    <option value="maker">M</option>
+                                    <option value="updated">U</option>
+                                </select>
+                            </div>
+                        </section>
+                    </section>
+                    <!-- List -->
+                    <section id="pList" class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3"></section>
+                    <div id="emptyOwned" class="hidden text-center py-16">
+                        <p class="text-4xl mb-3 opacity-30">🎹</p>
+                        <p class="text-gray-500 text-sm">プラグインがまだ登録されていません</p><button onclick="openModal()"
+                            class="mt-3 text-a-400 text-sm">＋ 最初のプラグインを登録</button>
+                    </div>
+                </div>
+
+                <!-- TAB: WISHLIST -->
+                <div id="tabWishlist" class="hidden">
+                    <div class="flex items-center justify-between mb-4">
+                        <h3 class="text-base font-bold text-white">⭐ 欲しいプラグイン</h3>
+                        <button onclick="handleAddButtonClick()"
+                            class="px-4 py-1.5 text-xs font-semibold rounded-lg bg-n-o hover:bg-orange-600 text-white transition-colors">＋
+                            追加</button>
+                    </div>
+                    <section id="wList" class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3"></section>
+                    <div id="emptyWish" class="hidden text-center py-16">
+                        <p class="text-4xl mb-3 opacity-30">⭐</p>
+                        <p class="text-gray-500 text-sm">ウィッシュリストは空です</p>
+                    </div>
+                </div>
+
+                <!-- TAB: SETTINGS -->
+                <div id="tabSettings" class="hidden">
+                    <!-- Firebase Status Display -->
+                    <div
+                        class="bg-s-800 rounded-xl border border-gray-800/50 p-5 mb-4 flex items-center justify-between">
+                        <div>
+                            <h3 class="text-base font-bold text-white">☁️ クラウド同期状態</h3>
+                            <p class="text-xs text-gray-500 mt-1">コード内設定に基づく接続状況</p>
+                        </div>
+                        <span id="cloudStatusDisp" class="px-3 py-1 bg-s-700 rounded text-xs font-mono text-gray-300">⚪
+                            確認中...</span>
+                    </div>
+
+                    <!-- Firebase Config Removed (Hardcoded) -->
+
+                    <div class="bg-s-800 rounded-xl border border-gray-800/50 p-5 mb-4">
+                        <h3 class="text-base font-bold text-white mb-4">🏷️ タグ管理</h3>
+                        <div class="flex gap-2 mb-3"><input id="newTagName" placeholder="新しいタグ名"
+                                class="flex-1 px-3 py-2 text-sm bg-s-700 border border-gray-700/50 rounded-lg outline-none">
+                            <input id="newTagColor" type="color" value="#38bdf8"
+                                class="w-10 h-9 rounded-lg border border-gray-700/50 cursor-pointer bg-s-700">
+                            <button onclick="addTag()"
+                                class="px-4 py-2 text-xs font-semibold rounded-lg bg-a-500 hover:bg-a-600 text-white transition-colors">追加</button>
+                        </div>
+                        <div id="tagList" class="flex flex-wrap gap-2"></div>
+                    </div>
+                    <div class="bg-s-800 rounded-xl border border-gray-800/50 p-5 mb-4">
+                        <h3 class="text-base font-bold text-white mb-4">🤖 Gemini AI 連携</h3>
+                        <p class="text-xs text-gray-500 mb-3">プラグイン名入力時にAIが自動でメーカー・カテゴリ・認証方式・購入リンクを調べます（<a
+                                href="https://aistudio.google.com/apikey" target="_blank"
+                                class="text-a-400 underline">無料APIキー取得</a>）</p>
+                        <div class="flex gap-2 mb-2">
+                            <input id="geminiKeyInp" type="password" placeholder="Gemini API キーを入力"
+                                class="flex-1 px-3 py-2 text-sm bg-s-700 border border-gray-700/50 rounded-lg outline-none font-mono">
+                            <button
+                                onclick="document.getElementById('geminiKeyInp').type=document.getElementById('geminiKeyInp').type==='password'?'text':'password'"
+                                class="px-3 py-2 text-xs rounded-lg bg-s-700 border border-gray-700/50 text-gray-400 hover:text-white">👁</button>
+                            <button onclick="saveGeminiKey()"
+                                class="px-4 py-2 text-xs font-semibold rounded-lg bg-purple-600 hover:bg-purple-700 text-white transition-colors">保存</button>
+                        </div>
+                        <div id="geminiStatus" class="text-xs text-gray-500"></div>
+                    </div>
+                    <div class="bg-s-800 rounded-xl border border-gray-800/50 p-5 mb-4">
+                        <h3 class="text-base font-bold text-white mb-4">📧 登録メールアドレス管理</h3>
+                        <p class="text-xs text-gray-500 mb-3">プラグイン登録時にドロップダウンから選択できます</p>
+                        <div class="flex gap-2 mb-3"><input id="newEmailInp" type="email" placeholder="メールアドレスを追加"
+                                class="flex-1 px-3 py-2 text-sm bg-s-700 border border-gray-700/50 rounded-lg outline-none">
+                            <button onclick="addEmail()"
+                                class="px-4 py-2 text-xs font-semibold rounded-lg bg-a-500 hover:bg-a-600 text-white transition-colors">追加</button>
+                        </div>
+                        <div id="emailList" class="space-y-1"></div>
+                    </div>
+                    <div class="bg-s-800 rounded-xl border border-gray-800/50 p-5 mb-4">
+                        <h3 class="text-base font-bold text-white mb-4">🔑 ライセンスキー自動抽出</h3>
+                        <p class="text-xs text-gray-500 mb-3">購入メール本文をペーストするとシリアルキーを自動検出します</p>
+                        <textarea id="emailPaste" rows="4" placeholder="メール本文をここにペースト..."
+                            class="w-full px-3 py-2 text-sm bg-s-700 border border-gray-700/50 rounded-lg outline-none resize-y mb-2"></textarea>
+                        <button onclick="extractLicenses()"
+                            class="px-4 py-2 text-xs font-semibold rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white transition-colors mb-3">🔍
+                            キーを抽出</button>
+                        <div id="licenseResults" class="space-y-2"></div>
+                    </div>
+                    <div class="bg-s-800 rounded-xl border border-gray-800/50 p-5">
+                        <h3 class="text-base font-bold text-white mb-4">👤 アカウント</h3>
+                        <p class="text-sm text-gray-400 mb-2">メール: <span class="text-white" id="settEmail"></span></p>
+                        <p class="text-sm text-gray-400 mb-4">表示名: <span class="text-white" id="settName"></span></p>
+
+                        <div class="mt-4 pt-4 border-t border-gray-700/50">
+                            <label class="flex items-center gap-2 cursor-pointer mb-4">
+                                <input type="checkbox" id="settAutoLogin" checked onchange="toggleAutoLogin()"
+                                    class="form-checkbox h-4 w-4 text-p-500 rounded border-gray-600 bg-gray-700 focus:ring-p-500/50">
+                                <span class="text-sm text-gray-300">次回から自動ログインする</span>
+                            </label>
+                            <button id="settingsAuthBtn" onclick="logout()"
+                                class="w-full py-2.5 text-sm font-semibold rounded-lg bg-s-700 hover:bg-red-500/20 text-gray-300 hover:text-red-400 border border-gray-700/50 transition-colors">
+                                🚪 ログアウト
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- TAB: ADMIN -->
+                <div id="tabAdmin" class="hidden">
+                    <div class="bg-s-800 rounded-xl border border-gray-800/50 p-5 mb-4">
+                        <h3 class="text-base font-bold text-white mb-4">📊 サイト統計</h3>
+                        <div class="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                            <div class="bg-s-700 rounded-lg p-4 text-center">
+                                <p class="text-2xl font-bold text-a-400" id="adUsers">0</p>
+                                <p class="text-[.6rem] text-gray-500 uppercase mt-1">登録ユーザー</p>
+                            </div>
+                            <div class="bg-s-700 rounded-lg p-4 text-center">
+                                <p class="text-2xl font-bold text-n-o" id="adPlugins">0</p>
+                                <p class="text-[.6rem] text-gray-500 uppercase mt-1">総プラグイン数</p>
+                            </div>
+                            <div class="bg-s-700 rounded-lg p-4 text-center">
+                                <p class="text-2xl font-bold text-green-400" id="adInstalled">0</p>
+                                <p class="text-[.6rem] text-gray-500 uppercase mt-1">インストール済</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="bg-s-800 rounded-xl border border-gray-800/50 p-5">
+                        <h3 class="text-base font-bold text-white mb-4">👥 登録ユーザー一覧</h3>
+                        <div id="adminUserList" class="space-y-2"></div>
+                    </div>
+                </div>
+
+            </div>
+
+            <!-- BOTTOM NAV (Mobile) -->
+            <nav id="bottomNav"
+                class="lg:hidden fixed bottom-0 left-0 w-full bg-s-900/95 backdrop-blur-xl border-t border-gray-800/50 flex justify-around items-center px-1 py-1 z-40 pb-safe shadow-[0_-4px_20px_rgba(0,0,0,0.3)]"
+                style="padding-bottom: env(safe-area-inset-bottom, 10px);">
+                <button onclick="switchTab('owned');window.scrollTo({top:0,behavior:'smooth'})"
+                    class="nav-btn flex flex-col items-center gap-0.5 text-gray-500 hover:text-gray-300 w-14 rounded-xl active:bg-white/5 transition-all p-2"
+                    id="navOwned">
+                    <span class="text-xl">🎹</span><span class="text-[0.6rem] font-medium">ホーム</span>
+                </button>
+                <button onclick="switchTab('wishlist');window.scrollTo({top:0,behavior:'smooth'})"
+                    class="nav-btn flex flex-col items-center gap-0.5 text-gray-500 hover:text-gray-300 w-14 rounded-xl active:bg-white/5 transition-all p-2"
+                    id="navWish">
+                    <span class="text-xl">⭐</span><span class="text-[0.6rem] font-medium">欲しい</span>
+                </button>
+                <div class="relative -top-6">
+                    <button onclick="handleAddButtonClick()"
+                        class="flex flex-col items-center justify-center text-white w-14 h-14 bg-gradient-to-br from-a-400 to-a-600 rounded-full border-4 border-s-900 shadow-lg shadow-a-500/40 active:scale-95 transition-transform hover:shadow-a-500/60 hover:-translate-y-1">
+                        <span class="text-2xl font-bold mb-0.5">＋</span>
+                    </button>
+                </div>
+                <button onclick="openImportModal()"
+                    class="nav-btn flex flex-col items-center gap-0.5 text-gray-500 hover:text-gray-300 w-14 rounded-xl active:bg-white/5 transition-all p-2">
+                    <span class="text-xl">📥</span><span class="text-[0.6rem] font-medium">登録</span>
+                </button>
+                <button onclick="switchTab('settings');window.scrollTo({top:0,behavior:'smooth'})"
+                    class="nav-btn flex flex-col items-center gap-0.5 text-gray-500 hover:text-gray-300 w-14 rounded-xl active:bg-white/5 transition-all p-2"
+                    id="navSet">
+                    <span class="text-xl">⚙️</span><span class="text-[0.6rem] font-medium">設定</span>
+                </button>
+            </nav>
+        </div>
+    </div>
+
+    <!-- PLUGIN MODAL -->
+    <div id="modal" class="fixed inset-0 z-50 hidden items-center justify-center mb bg-black/60 modal-bg">
+        <div
+            class="bg-s-800 border border-gray-700/50 rounded-2xl w-full max-w-lg mx-4 max-h-[90vh] overflow-y-auto shadow-2xl fi modal-content">
+            <div class="modal-drag lg:hidden"></div>
+            <div
+                class="sticky top-0 bg-s-800 border-b border-gray-800/50 px-6 py-3 flex items-center justify-between rounded-t-2xl">
+                <h2 id="mTitle" class="text-base font-bold text-white">新規プラグイン登録</h2>
+                <button onclick="closeModal()" class="text-gray-500 hover:text-white text-xl">&times;</button>
+            </div>
+            <form id="pForm" onsubmit="savePlugin(event)" class="px-6 py-4 space-y-3">
+                <input type="hidden" id="eId">
+                <div class="relative"><label class="block text-xs text-gray-400 mb-1">プラグイン名 <span
+                            class="text-red-400">*</span> <span id="acStatus"
+                            class="text-a-400 text-[.6rem] ml-2"></span></label>
+                    <input id="fN" required autocomplete="off" oninput="onPluginInput()" onkeydown="acKeydown(event)"
+                        class="w-full px-3 py-2 text-sm bg-s-700 border border-gray-700/50 rounded-lg outline-none"
+                        placeholder="例: Serum（入力すると自動補完）">
+                    <div id="acDrop" class="ac-drop"></div>
+                </div>
+                <div class="grid grid-cols-2 gap-3">
+                    <div><label class="block text-xs text-gray-400 mb-1">メーカー名</label><input id="fM"
+                            class="w-full px-3 py-2 text-sm bg-s-700 border border-gray-700/50 rounded-lg outline-none"
+                            placeholder="Xfer Records"></div>
+                    <div><label class="block text-xs text-gray-400 mb-1">カテゴリー</label><select id="fC"
+                            class="w-full px-3 py-2 text-sm bg-s-700 border border-gray-700/50 rounded-lg outline-none cursor-pointer">
+                            <option>インストゥルメント</option>
+                            <option>エフェクト</option>
+                            <option>ユーティリティ</option>
+                            <option>その他</option>
+                        </select></div>
+                </div>
+                <div class="grid grid-cols-2 gap-3">
+                    <div><label class="block text-xs text-gray-400 mb-1">重要度</label><select id="fP"
+                            class="w-full px-3 py-2 text-sm bg-s-700 border border-gray-700/50 rounded-lg outline-none cursor-pointer">
+                            <option>高(即復旧)</option>
+                            <option>中</option>
+                            <option>低</option>
+                        </select></div>
+                    <div><label class="block text-xs text-gray-400 mb-1">認証方式</label><select id="fA"
+                            class="w-full px-3 py-2 text-sm bg-s-700 border border-gray-700/50 rounded-lg outline-none cursor-pointer">
+                            <option>iLok USB</option>
+                            <option>iLok Cloud</option>
+                            <option>Steinberg</option>
+                            <option>Native Access</option>
+                            <option>Waves</option>
+                            <option>独自認証</option>
+                            <option>その他</option>
+                        </select></div>
+                </div>
+                <div><label class="block text-xs text-gray-400 mb-1">関連サイト</label>
+                    <div id="siteList" class="space-y-2 mb-2"></div>
+                    <div class="flex gap-2">
+                        <input id="newSiteName" placeholder="サイト名 (例: 公式)"
+                            class="w-1/3 px-3 py-2 text-sm bg-s-700 border border-gray-700/50 rounded-lg outline-none">
+                        <input id="newSiteUrl" placeholder="https://..."
+                            class="flex-1 px-3 py-2 text-sm bg-s-700 border border-gray-700/50 rounded-lg outline-none">
+                        <button type="button" onclick="addSite()"
+                            class="px-3 py-2 text-xs font-semibold rounded-lg bg-s-600 hover:bg-s-500 text-white transition-colors">追加</button>
+                    </div>
+                </div>
+                <input type="hidden" id="fE" value="">
+                <div><label class="block text-xs text-gray-400 mb-1">ライセンスキー</label>
+                    <div class="relative"><input id="fL" type="password"
+                            class="w-full px-3 py-2 pr-10 text-sm bg-s-700 border border-gray-700/50 rounded-lg outline-none font-mono"
+                            placeholder="XXXX-XXXX-XXXX">
+                        <button type="button" onclick="toggleLP()"
+                            class="absolute right-2 top-1/2 -translate-y-1/2 text-gray-500 hover:text-a-400 text-sm"
+                            id="tLB">👁</button>
+                    </div>
+                </div>
+                <div><label class="block text-xs text-gray-400 mb-1">タグ</label>
+                    <div id="tagSelect"
+                        class="flex flex-wrap gap-1 p-2 bg-s-700 border border-gray-700/50 rounded-lg min-h-[36px]">
+                    </div>
+                </div>
+                <div><label class="block text-xs text-gray-400 mb-1">メモ</label><textarea id="fNt" rows="2"
+                        class="w-full px-3 py-2 text-sm bg-s-700 border border-gray-700/50 rounded-lg outline-none resize-none"
+                        placeholder="インストール手順や設定メモ…"></textarea></div>
+                <div class="flex items-center gap-2"><input id="fIn" type="checkbox"
+                        class="w-4 h-4 accent-green-500 rounded cursor-pointer"><label for="fIn"
+                        class="text-sm text-gray-300 cursor-pointer">インストール完了</label></div>
+                <div class="flex justify-end gap-2 pt-3 border-t border-gray-800/50">
+                    <button type="button" onclick="closeModal()"
+                        class="px-4 py-2 text-xs rounded-lg bg-s-700 hover:bg-s-600 text-gray-400 hover:text-white transition-colors">キャンセル</button>
+                    <button type="submit"
+                        class="px-5 py-2 text-xs font-semibold rounded-lg bg-a-500 hover:bg-a-600 text-white shadow-md transition-colors">保存</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- WISHLIST MODAL -->
+    <div id="wModal" class="fixed inset-0 z-50 hidden items-center justify-center mb bg-black/60 modal-bg">
+        <div class="bg-s-800 border border-gray-700/50 rounded-2xl w-full max-w-md mx-4 shadow-2xl fi modal-content">
+            <div class="modal-drag lg:hidden"></div>
+            <div
+                class="sticky top-0 bg-s-800 border-b border-gray-800/50 px-6 py-3 flex items-center justify-between rounded-t-2xl">
+                <h2 id="wMTitle" class="text-base font-bold text-white">欲しいプラグイン追加</h2>
+                <button onclick="closeWishModal()" class="text-gray-500 hover:text-white text-xl">&times;</button>
+            </div>
+            <form id="wForm" onsubmit="saveWish(event)" class="px-6 py-4 space-y-3">
+                <input type="hidden" id="wEId">
+                <div><label class="block text-xs text-gray-400 mb-1">プラグイン名 <span class="text-red-400">*</span> <span
+                            id="wAcStatus" class="text-a-400 text-[.6rem] ml-2"></span></label>
+                    <input id="wN" required autocomplete="off" oninput="onWishInput()" onkeydown="acKeydownWish(event)"
+                        class="w-full px-3 py-2 text-sm bg-s-700 border border-gray-700/50 rounded-lg outline-none"
+                        placeholder="例: Serum">
+                    <div id="wAcDrop" class="ac-drop"></div>
+                </div>
+                <div class="grid grid-cols-2 gap-3">
+                    <div><label class="block text-xs text-gray-400 mb-1">メーカー</label><input id="wMk"
+                            class="w-full px-3 py-2 text-sm bg-s-700 border border-gray-700/50 rounded-lg outline-none">
+                    </div>
+                    <div><label class="block text-xs text-gray-400 mb-1">価格</label><input id="wPr"
+                            class="w-full px-3 py-2 text-sm bg-s-700 border border-gray-700/50 rounded-lg outline-none"
+                            placeholder="¥12,000"></div>
+                </div>
+                <div><label class="block text-xs text-gray-400 mb-1">購入リンク</label><input id="wUrl" type="url"
+                        class="w-full px-3 py-2 text-sm bg-s-700 border border-gray-700/50 rounded-lg outline-none"
+                        placeholder="https://..."></div>
+                <div><label class="block text-xs text-gray-400 mb-1">優先度</label><select id="wPri"
+                        class="w-full px-3 py-2 text-sm bg-s-700 border border-gray-700/50 rounded-lg outline-none cursor-pointer">
+                        <option>高</option>
+                        <option>中</option>
+                        <option>低</option>
+                    </select></div>
+                <div><label class="block text-xs text-gray-400 mb-1">メモ</label><textarea id="wNt" rows="2"
+                        class="w-full px-3 py-2 text-sm bg-s-700 border border-gray-700/50 rounded-lg outline-none resize-none"></textarea>
+                </div>
+                <div class="flex justify-end gap-2 pt-3 border-t border-gray-800/50">
+                    <button type="button" onclick="closeWishModal()"
+                        class="px-4 py-2 text-xs rounded-lg bg-s-700 hover:bg-s-600 text-gray-400 hover:text-white transition-colors">キャンセル</button>
+                    <button type="submit"
+                        class="px-5 py-2 text-xs font-semibold rounded-lg bg-n-o hover:bg-orange-600 text-white shadow-md transition-colors">保存</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- DELETE MODAL -->
+    <style>
+        /* ===== EXPORT/IMPORT MODAL ANIMATIONS ===== */
+        .modal-overlay {
+            opacity: 0;
+            transition: opacity .3s ease;
+            pointer-events: none;
+        }
+
+        .modal-overlay.active {
+            opacity: 1;
+            pointer-events: auto;
+        }
+
+        .modal-panel {
+            transform: translateY(40px) scale(.97);
+            opacity: 0;
+            transition: transform .35s cubic-bezier(.22, 1, .36, 1), opacity .3s ease;
+        }
+
+        .modal-overlay.active .modal-panel {
+            transform: translateY(0) scale(1);
+            opacity: 1;
+        }
+
+        /* Progress bar */
+        .progress-track {
+            height: 4px;
+            border-radius: 9999px;
+            background: rgba(255, 255, 255, .08);
+            overflow: hidden;
+        }
+
+        .progress-fill {
+            height: 100%;
+            border-radius: 9999px;
+            background: linear-gradient(90deg, #a855f7, #38bdf8, #22c55e);
+            transition: width .3s ease;
+        }
+
+        /* Import result rows */
+        .import-row {
+            display: flex;
+            align-items: center;
+            gap: .5rem;
+            padding: .6rem .75rem;
+            border-radius: .75rem;
+            background: rgba(255, 255, 255, .03);
+            border: 1px solid rgba(255, 255, 255, .06);
+            transition: all .25s ease;
+            animation: rowSlide .3s ease forwards;
+            opacity: 0;
+        }
+
+        .import-row:hover {
+            background: rgba(255, 255, 255, .07);
+            border-color: rgba(255, 255, 255, .12);
+        }
+
+        @keyframes rowSlide {
+            from {
+                opacity: 0;
+                transform: translateX(-8px)
+            }
+
+            to {
+                opacity: 1;
+                transform: translateX(0)
+            }
+        }
+
+        .import-badge {
+            font-size: .6rem;
+            padding: 2px 8px;
+            border-radius: 9999px;
+            font-weight: 600;
+            white-space: nowrap;
+        }
+
+        .badge-found {
+            background: rgba(34, 197, 94, .15);
+            color: #4ade80;
+        }
+
+        .badge-ai {
+            background: rgba(168, 85, 247, .15);
+            color: #c084fc;
+        }
+
+        .badge-manual {
+            background: rgba(250, 204, 21, .12);
+            color: #fbbf24;
+        }
+
+        .badge-exists {
+            background: rgba(100, 116, 139, .2);
+            color: #94a3b8;
+        }
+
+        /* Tab buttons */
+        .tab-btn {
+            flex: 1;
+            padding: .65rem;
+            font-size: .75rem;
+            font-weight: 600;
+            border-radius: .75rem;
+            transition: all .2s ease;
+            text-align: center;
+            cursor: pointer;
+            border: 1px solid transparent;
+            color: #94a3b8;
+            background: transparent;
+        }
+
+        .tab-btn.active {
+            background: rgba(99, 102, 241, .15);
+            color: #818cf8;
+            border-color: rgba(99, 102, 241, .3);
+        }
+
+        .tab-btn:not(.active):hover {
+            background: rgba(255, 255, 255, .05);
+            color: #e2e8f0;
+        }
+
+        /* Mobile optimizations */
+        @media (max-width:640px) {
+            .modal-panel {
+                margin: 0 !important;
+                border-radius: 1.25rem 1.25rem 0 0 !important;
+                max-height: 92vh !important;
+            }
+
+            .modal-overlay.active .modal-panel {
+                transform: translateY(0) scale(1);
+            }
+
+            .modal-panel {
+                transform: translateY(100%) !important;
+            }
+
+            .import-row {
+                padding: .75rem;
+                gap: .6rem;
+            }
+
+            .tab-btn {
+                padding: .75rem;
+                font-size: .8rem;
+            }
+        }
+    </style>
+
+    <!-- EXPORT MODAL -->
+    <div id="exportModal"
+        class="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 modal-overlay"
+        onclick="if(event.target===this)closeExportModal()">
+        <div
+            class="modal-panel bg-s-800/95 backdrop-blur-xl border border-gray-700/40 rounded-2xl w-full max-w-lg mx-0 sm:mx-4 shadow-2xl max-h-[85vh] sm:max-h-[80vh] flex flex-col">
+            <div class="flex items-center justify-between px-5 py-4 border-b border-gray-700/30">
+                <div class="flex items-center gap-2">
+                    <span class="text-lg">📤</span>
+                    <h3 class="text-sm font-bold text-white">エクスポート</h3>
+                    <span id="exportCount"
+                        class="text-[.6rem] px-2 py-0.5 rounded-full bg-a-500/20 text-a-400 font-semibold"></span>
+                </div>
+                <button onclick="closeExportModal()"
+                    class="w-8 h-8 flex items-center justify-center rounded-lg text-gray-500 hover:text-white hover:bg-white/10 transition-all text-lg">×</button>
+            </div>
+            <div class="px-5 py-4 flex-1 overflow-y-auto">
+                <textarea id="exportText" readonly rows="10"
+                    class="w-full px-3 py-3 text-xs bg-s-900/80 border border-gray-700/40 rounded-xl outline-none resize-none font-mono text-gray-300 leading-relaxed focus:border-a-500/50 transition-colors"></textarea>
+            </div>
+            <div class="flex gap-2 px-5 py-3 border-t border-gray-700/30">
+                <button onclick="copyExportText()"
+                    class="flex-1 px-4 py-2.5 text-xs font-semibold rounded-xl bg-a-500/15 hover:bg-a-500/25 text-a-400 border border-a-500/20 transition-all active:scale-[.97]">📋
+                    コピー</button>
+                <button onclick="downloadExportJSON()"
+                    class="flex-1 px-4 py-2.5 text-xs font-semibold rounded-xl bg-s-700 hover:bg-s-600 text-gray-300 border border-gray-700/40 transition-all active:scale-[.97]">💾
+                    JSONダウンロード</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- IMPORT MODAL -->
+    <div id="importModal"
+        class="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 modal-overlay"
+        onclick="if(event.target===this)closeImportModal()">
+        <div
+            class="modal-panel bg-s-800/95 backdrop-blur-xl border border-gray-700/40 rounded-2xl w-full max-w-lg mx-0 sm:mx-4 shadow-2xl max-h-[90vh] sm:max-h-[80vh] flex flex-col">
+            <div class="flex items-center justify-between px-5 py-4 border-b border-gray-700/30">
+                <div class="flex items-center gap-2">
+                    <span class="text-lg">📥</span>
+                    <h3 class="text-sm font-bold text-white">インポート</h3>
+                </div>
+                <button onclick="closeImportModal()"
+                    class="w-8 h-8 flex items-center justify-center rounded-lg text-gray-500 hover:text-white hover:bg-white/10 transition-all text-lg">×</button>
+            </div>
+            <!-- Tabs -->
+            <div class="flex gap-2 px-5 pt-3 pb-1">
+                <button class="tab-btn active" onclick="switchImportTab('text')" id="tabText">📝 テキスト一括</button>
+                <button class="tab-btn" onclick="switchImportTab('json')" id="tabJSON">💾 JSON復元</button>
+            </div>
+            <div class="px-5 py-3 flex-1 overflow-y-auto">
+                <!-- Tab 1: Text bulk -->
+                <div id="importTabText">
+                    <p class="text-[0.65rem] text-gray-500 mb-2">プラグイン名を1行ずつ入力 → 内蔵DB(2100件+)から自動マッチング</p>
+                    <textarea id="importText" rows="5"
+                        class="w-full px-3 py-3 text-sm bg-s-900/80 border border-gray-700/40 rounded-xl outline-none resize-none font-mono text-gray-300 focus:border-a-500/50 transition-colors"
+                        placeholder="Serum&#10;Ozone 11&#10;Kontakt 7&#10;FabFilter Pro-Q 3&#10;Omnisphere"></textarea>
+                    <!-- Progress bar -->
+                    <div id="importProgress" class="hidden mt-2">
+                        <div class="flex justify-between text-[0.6rem] text-gray-500 mb-1">
+                            <span id="importProgressLabel">検索中...</span>
+                            <span id="importProgressCount">0/0</span>
+                        </div>
+                        <div class="progress-track">
+                            <div id="importProgressBar" class="progress-fill" style="width:0%"></div>
+                        </div>
+                    </div>
+                    <button onclick="bulkImportFromText()" id="bulkImportBtn"
+                        class="mt-3 px-4 py-3 text-sm font-semibold rounded-xl bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700 text-white transition-all w-full active:scale-[.98] shadow-lg shadow-indigo-500/20">🔍
+                        プラグインを検索して登録</button>
+                    <!-- Results preview -->
+                    <div id="importPreview" class="hidden mt-4">
+                        <div class="flex items-center justify-between mb-2">
+                            <label class="text-xs font-semibold text-white">検索結果</label>
+                            <span id="importSummary" class="text-[0.6rem] text-gray-500"></span>
+                        </div>
+                        <div id="importResults" class="space-y-1.5 max-h-[35vh] overflow-y-auto pr-1"></div>
+                        <div class="flex gap-2 mt-4">
+                            <button onclick="confirmBulkImport()"
+                                class="flex-1 px-4 py-3 text-sm font-semibold rounded-xl bg-gradient-to-r from-green-500 to-emerald-600 text-white transition-all active:scale-[.98] shadow-lg shadow-green-500/20">✅
+                                一括登録</button>
+                            <button onclick="cancelBulkImport()"
+                                class="px-4 py-3 text-xs rounded-xl bg-s-700 hover:bg-s-600 text-gray-400 hover:text-white transition-all active:scale-[.98]">戻る</button>
+                        </div>
+                    </div>
+                </div>
+                <!-- Tab 2: JSON restore -->
+                <div id="importTabJSON" class="hidden">
+                    <p class="text-[0.65rem] text-gray-500 mb-3">エクスポートしたJSONファイルを読み込んでデータを復元します。</p>
+                    <div class="space-y-4">
+                        <button onclick="importFromCatalog('NI')"
+                            class="w-full bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-400 border border-indigo-500/30 p-4 rounded-lg flex items-center justify-center gap-3 transition-all group">
+                            <span class="text-2xl group-hover:scale-110 transition-transform">📚</span>
+                            <div class="text-left">
+                                <div class="font-bold text-lg">Native Instruments Catalog</div>
+                                <div class="text-xs text-gray-400">Komplete, Kontakt, Massive Xなど主要製品を一括追加</div>
+                            </div>
+                        </button>
+
+                        <div onclick="document.getElementById('importFile').click()"
+                            class="border-2 border-dashed border-gray-700 hover:border-a-500 rounded-xl p-8 text-center cursor-pointer transition-colors group">
+                            <div class="text-4xl mb-4 group-hover:scale-110 transition-transform">📄</div>
+                            <p class="text-gray-300 font-medium mb-1">バックアップファイル (.json) を選択</p>
+                            <p class="text-xs text-gray-500">クリックしてファイルを選択してください</p>
+                            <input type="file" id="importFile" accept=".json" class="hidden"
+                                onchange="importFromJSON(event)">
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- DELETE CONFIRM MODAL -->
+    <div id="delModal" class="fixed inset-0 z-50 hidden items-center justify-center mb bg-black/60 modal-bg">
+        <div
+            class="bg-s-800 border border-gray-700/50 rounded-2xl w-full max-w-sm mx-4 p-6 shadow-2xl fi text-center modal-content">
+            <div class="modal-drag lg:hidden"></div>
+            <p class="text-3xl mb-3">⚠️</p>
+            <p class="text-sm text-gray-300 mb-1">削除しますか？</p>
+            <p id="delName" class="text-white font-semibold mb-5"></p>
+            <div class="flex justify-center gap-3">
+                <button onclick="closeDelModal()"
+                    class="px-4 py-2 text-xs rounded-lg bg-s-700 hover:bg-s-600 text-gray-400 hover:text-white transition-colors">キャンセル</button>
+                <button onclick="confirmDel()"
+                    class="px-5 py-2 text-xs font-semibold rounded-lg bg-red-600 hover:bg-red-700 text-white transition-colors">削除</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- TOAST -->
+    <div id="toast"
+        class="fixed bottom-6 right-6 z-50 hidden px-5 py-3 rounded-xl text-sm font-medium shadow-2xl border border-gray-700/50 bg-s-700 text-white fi">
+    </div>
+
+    <!-- PLUGIN DATABASE -->
+    <script src="data/plugins_db.js"></script>
+    <script>
+        // ============ CRYPTO ============
+        async function sha256(s) { const e = new TextEncoder().encode(s); const h = await crypto.subtle.digest('SHA-256', e); return Array.from(new Uint8Array(h)).map(b => b.toString(16).padStart(2, '0')).join('') }
+
+        // ============ FIREBASE & STORAGE ============
+        const K = { users: 'prm_users', session: 'prm_session', admin: 'prm_admin_email' };
+        let db = null, auth = null, currentUserUID = null;
+
+        // 🔴🔴🔴 FIREBASE CONFIGURATION 🔴🔴🔴
+        // ここにFirebaseプロジェクトの設定を貼り付けてください
+        const firebaseConfig = {
+            apiKey: "AIzaSyC_klE1HnMBbmJA48oCuYjUp3Lg8zgecfY",
+            authDomain: "pluginrecoverymanager.firebaseapp.com",
+            projectId: "pluginrecoverymanager",
+            storageBucket: "pluginrecoverymanager.firebasestorage.app",
+            messagingSenderId: "746470078325",
+            appId: "1:746470078325:web:0108d55bad12a26ce0453c",
+            measurementId: "G-SP52GP6QZM"
+        };
+        // 🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴
+
+        async function initFirebase() {
+            // Check if config is filled
+            if (firebaseConfig.apiKey === "YOUR_API_KEY") {
+                console.log('Firebase Config not set. Running in Local Mode.');
+                updateCloudStatus('⚪ ローカルモード (設定未完了)');
+                return;
+            }
+
+            try {
+                const app = window.firebase.initializeApp(firebaseConfig);
+                auth = window.firebase.getAuth(app);
+                db = window.firebase.getFirestore(app);
+
+                console.log('Firebase Connected');
+                updateCloudStatus('🟢 クラウド保存有効');
+
+                // Auth State Listener
+                window.firebase.onAuthStateChanged(auth, async (user) => {
+                    if (user) {
+                        currentUserUID = user.uid;
+                        // Sync or Load
+                        await loadUserDataParams(user.uid, user.email, user.displayName || user.email.split('@')[0]);
+                    } else {
+                        currentUserUID = null;
+                    }
+                });
+            } catch (e) {
+                console.error('Firebase Init Error:', e);
+                updateCloudStatus('🔴 接続エラー (ローカルモード)');
+            }
+        }
+
+        function updateCloudStatus(msg) {
+            const el = document.getElementById('cloudStatusDisp');
+            if (el) el.textContent = msg;
+        }
+
+        function saveFirebaseConfig() { /* Deprecated */ }
+
+        // Adapted Storage Functions
+        function getUsers() { return JSON.parse(localStorage.getItem(K.users) || '{}'); }
+        function saveUsers(u) { localStorage.setItem(K.users, JSON.stringify(u)); }
+        function uKey(uid, t) { return `prm_${uid}_${t}`; }
+
+        async function loadD(t) {
+            if (db && currentUserUID && !CU.isGuest) {
+                // Cloud Load
+                try {
+                    const s = await window.firebase.getDocs(window.firebase.collection(db, 'users', currentUserUID, t));
+                    return s.docs.map(d => d.data());
+                } catch (e) { console.error('Load Error:', e); return []; }
+            } else {
+                // Local Load
+                return JSON.parse(localStorage.getItem(uKey(CU.uid, t)) || '[]');
+            }
+        }
+
+        async function saveD(t, d) {
+            if (db && currentUserUID && !CU.isGuest) {
+                // Cloud Save (Full overwrite for list types is inefficient but simple for now. 
+                // Better: Batch writes. For now, since 'd' is array, we might need a wrapper doc or individual docs.
+                // Plan: t='plugins' -> collection 'users/{uid}/plugins'. 
+                // Replacing entire collection is hard. 
+                // Strategy: We will treat 'd' as the source of truth. 
+                // For this implementation, let's use a single DOC for lists if small, OR sync individual items.
+                // Given existing code pushes to 'plugins' array, individual docs are better for scalability.
+                // BUT 'd' passed here is the ENTIRE array.
+                // To avoid massive writes, we should ideally only save changed items, but the current app architecture saves WHOLE array.
+                // Hack for v1: Save as one big JSON string in a doc if < 1MB? No, bad practice.
+                // Better: The 'd' is the array. We loop and setDoc.
+                // Compromise: Save as a single document field if possible? 
+                // Firestore limit: 1MB per doc. 2000 plugins * 500 bytes = 1MB. It is borderline.
+                // Let's stick to LocalStorage Mirroring + Cloud background sync? 
+                // No, user wants "Log in anywhere".
+                // Let's implement specific 'savePlugin' Cloud logic instead of generic 'saveD' for Cloud.
+                // For this generic 'saveD', if we receive an array, we'll try to save it as a JSON blob in a doc called 'data'. 
+                // users/{uid}/data/{t} -> { list: [...] }
+                try {
+                    await window.firebase.setDoc(window.firebase.doc(db, 'users', currentUserUID, 'data', t), { list: d });
+
+                    if (t === 'plugins') {
+                        // Update User Profile Stats
+                        await window.firebase.setDoc(window.firebase.doc(db, 'users', currentUserUID), {
+                            pluginCount: d.length,
+                            installedCount: d.filter(p => p.installed).length,
+                            lastUpdated: new Date().toISOString()
+                        }, { merge: true });
+                    }
+                } catch (e) { console.error('Cloud Save Error', e); }
+            }
+            // Always save local as backup/cache
+            localStorage.setItem(uKey(CU.uid, t), JSON.stringify(d));
+        }
+
+        // Override loadD to handle the {list:[]} structure from cloud
+        async function loadD_Cloud(t) {
+            if (db && currentUserUID && !CU.isGuest) {
+                try {
+                    const snap = await window.firebase.getDoc(window.firebase.doc(db, 'users', currentUserUID, 'data', t));
+                    if (snap.exists()) return snap.data().list || [];
+                    return [];
+                } catch (e) { console.error(e); return []; }
+            }
+            return JSON.parse(localStorage.getItem(uKey(CU.uid, t)) || '[]');
+        }
+
+
+        let CU = null, plugins = [], wishlist = [], tags = [], regEmails = [];
+        let guestWarned = false;
+
+        // ============ AUTH ============
+        let authMode = 'login';
+
+        function showAuth(m) {
+            authMode = m; const l = document.getElementById('authLoginTab'), r = document.getElementById('authRegTab'), n = document.getElementById('nameField'), b = document.getElementById('authBtn'), f = document.getElementById('forgotPassLink');
+            if (m === 'login') {
+                l.className = 'flex-1 py-2 text-xs font-semibold rounded-md bg-a-500 text-white transition-all';
+                r.className = 'flex-1 py-2 text-xs font-semibold rounded-md text-gray-400 transition-all';
+                n.classList.add('hidden');
+                b.textContent = 'ログイン';
+                f.classList.remove('hidden');
+            }
+            else {
+                r.className = 'flex-1 py-2 text-xs font-semibold rounded-md bg-a-500 text-white transition-all';
+                l.className = 'flex-1 py-2 text-xs font-semibold rounded-md text-gray-400 transition-all';
+                n.classList.remove('hidden');
+                b.textContent = '新規登録';
+                f.classList.add('hidden');
+            }
+            document.getElementById('authError').classList.add('hidden');
+        }
+        function toggleLP() { const i = document.getElementById('fL'), b = document.getElementById('tLB'); if (i.type === 'password') { i.type = 'text'; b.textContent = '🔒'; } else { i.type = 'password'; b.textContent = '👁'; } }
+        function toggleAP() { const i = document.getElementById('aPass'), b = document.getElementById('tAPB'); if (i.type === 'password') { i.type = 'text'; b.textContent = '🔒'; } else { i.type = 'password'; b.textContent = '👁'; } }
+
+        async function resetPassword() {
+            const email = document.getElementById('aEmail').value.trim().toLowerCase();
+            const errEl = document.getElementById('authError');
+
+            if (!email) {
+                errEl.textContent = 'リセットメールを送信するため、まずメールアドレスを入力してください。';
+                errEl.classList.remove('hidden');
+                return;
+            }
+
+            if (!auth) {
+                toast('⚠️ クラウド接続が無効なため利用できません。');
+                return;
+            }
+
+            try {
+                await window.firebase.sendPasswordResetEmail(auth, email);
+                toast('📧 パスワード再設定メールを送信しました。');
+                errEl.classList.add('hidden');
+            } catch (err) {
+                console.error(err);
+                let msg = 'エラーが発生しました。';
+                if (err.code === 'auth/user-not-found') msg = 'このメールアドレスは登録されていません。';
+                if (err.code === 'auth/invalid-email') msg = '無効なメールアドレスです。';
+                errEl.textContent = msg;
+                errEl.classList.remove('hidden');
+            }
+        }
+
+        async function handleAuth(e) {
+            e.preventDefault();
+            const email = document.getElementById('aEmail').value.trim().toLowerCase();
+            const pass = document.getElementById('aPass').value;
+            const errEl = document.getElementById('authError');
+
+            if (auth) {
+                // Firebase Auth
+                try {
+                    let userCred;
+                    if (authMode === 'register') {
+                        userCred = await window.firebase.createUserWithEmailAndPassword(auth, email, pass);
+                        const name = document.getElementById('aName').value.trim() || email.split('@')[0];
+                        await window.firebase.updateProfile(userCred.user, { displayName: name });
+                        // Save User Profile to Firestore (for Admin listing)
+                        await window.firebase.setDoc(window.firebase.doc(db, 'users', userCred.user.uid), {
+                            name: name,
+                            email: email,
+                            createdAt: new Date().toISOString(),
+                            role: email === 'matsukan0207@gmail.com' ? 'admin' : 'user'
+                        });
+                        // Initial Data for Cloud
+                        await saveD('tags', [
+                            { name: 'お気に入り', color: '#f97316' }, { name: 'マスタリング', color: '#a855f7' }, { name: 'ミキシング', color: '#22c55e' },
+                            { name: 'ボーカル', color: '#ec4899' }, { name: 'ドラム', color: '#f43f5e' }, { name: 'ベース', color: '#3b82f6' },
+                            { name: 'シンセ', color: '#06b6d4' }, { name: 'EQ/ダイナミクス', color: '#8b5cf6' }, { name: '空間系', color: '#10b981' },
+                            { name: 'サチュレーション', color: '#ea580c' }, { name: 'モジュレーション', color: '#6366f1' }, { name: 'オーケストラ', color: '#d97706' },
+                            { name: 'シネマティック', color: '#4f46e5' }, { name: 'ローファイ', color: '#7c3aed' }, { name: 'ギター', color: '#b91c1c' },
+                            { name: 'ピアノ/鍵盤', color: '#0891b2' }, { name: 'ユーティリティ', color: '#4b5563' }, { name: '🔥 要チェック', color: '#f59e0b' }
+                        ]);
+                    } else {
+                        userCred = await window.firebase.signInWithEmailAndPassword(auth, email, pass);
+                    }
+                    // onAuthStateChanged will handle the rest
+                } catch (err) {
+                    console.error(err);
+                    let msg = '認証エラーが発生しました';
+                    if (err.code === 'auth/email-already-in-use') msg = 'このメールアドレスは既に使用されています';
+                    if (err.code === 'auth/wrong-password' || err.code === 'auth/user-not-found' || err.code === 'auth/invalid-credential') msg = 'メールアドレスまたはパスワードが正しくありません';
+                    if (err.code === 'auth/weak-password') msg = 'パスワードが弱すぎます（6文字以上必要です）';
+                    errEl.textContent = msg; errEl.classList.remove('hidden');
+                }
+            } else {
+                // Local Auth (Legacy)
+                const hash = await sha256(pass), users = getUsers(), uid = await sha256(email);
+                if (authMode === 'register') {
+                    if (users[uid]) { errEl.textContent = 'このメールアドレスは既に登録されています'; errEl.classList.remove('hidden'); return; }
+                    const name = document.getElementById('aName').value.trim() || email.split('@')[0];
+                    users[uid] = { email, name, hash, createdAt: new Date().toISOString(), isAdmin: Object.keys(users).length === 0 };
+                    saveUsers(users);
+                    localStorage.setItem(uKey(uid, 'tags'), JSON.stringify([
+                        { name: 'お気に入り', color: '#f97316' }, { name: 'マスタリング', color: '#a855f7' }, { name: 'ミキシング', color: '#22c55e' },
+                        { name: 'ボーカル', color: '#ec4899' }, { name: 'ドラム', color: '#f43f5e' }, { name: 'ベース', color: '#3b82f6' },
+                        { name: 'シンセ', color: '#06b6d4' }, { name: 'EQ/ダイナミクス', color: '#8b5cf6' }, { name: '空間系', color: '#10b981' },
+                        { name: 'サチュレーション', color: '#ea580c' }, { name: 'モジュレーション', color: '#6366f1' }, { name: 'オーケストラ', color: '#d97706' },
+                        { name: 'シネマティック', color: '#4f46e5' }, { name: 'ローファイ', color: '#7c3aed' }, { name: 'ギター', color: '#b91c1c' },
+                        { name: 'ピアノ/鍵盤', color: '#0891b2' }, { name: 'ユーティリティ', color: '#4b5563' }, { name: '🔥 要チェック', color: '#f59e0b' }
+                    ]));
+                    await loadUserDataParams(uid, email, name, users[uid]);
+                } else {
+                    if (!users[uid] || users[uid].hash !== hash) { errEl.textContent = 'メールアドレスまたはパスワードが正しくありません'; errEl.classList.remove('hidden'); return; }
+                    await loadUserDataParams(uid, email, users[uid].name, users[uid]);
+                }
+            }
+        }
+
+        async function loadUserDataParams(uid, email, name, extra = {}) {
+            CU = { uid, email, name, ...extra };
+            localStorage.setItem(K.session, uid);
+
+            // Allow async load
+            if (auth && !CU.isGuest) {
+                plugins = await loadD_Cloud('plugins');
+                wishlist = await loadD_Cloud('wishlist');
+                tags = await loadD_Cloud('tags');
+                regEmails = await loadD_Cloud('emails');
+            } else {
+                plugins = await loadD('plugins'); wishlist = await loadD('wishlist'); tags = await loadD('tags'); regEmails = await loadD('emails');
+            }
+
+            if (!tags.length) tags = [
+                { name: 'お気に入り', color: '#f97316' }, { name: 'マスタリング', color: '#a855f7' }, { name: 'ミキシング', color: '#22c55e' },
+                { name: 'ボーカル', color: '#ec4899' }, { name: 'ドラム', color: '#f43f5e' }, { name: 'ベース', color: '#3b82f6' },
+                { name: 'シンセ', color: '#06b6d4' }, { name: 'EQ/ダイナミクス', color: '#8b5cf6' }, { name: '空間系', color: '#10b981' },
+                { name: 'サチュレーション', color: '#ea580c' }, { name: 'モジュレーション', color: '#6366f1' }, { name: 'オーケストラ', color: '#d97706' },
+                { name: 'シネマティック', color: '#4f46e5' }, { name: 'ローファイ', color: '#7c3aed' }, { name: 'ギター', color: '#b91c1c' },
+                { name: 'ピアノ/鍵盤', color: '#0891b2' }, { name: 'ユーティリティ', color: '#4b5563' }, { name: '🔥 要チェック', color: '#f59e0b' }
+            ];
+            migrateTags(); // Auto-migrate tags to Japanese
+            if (email === 'matsukan0207@gmail.com') { CU.isAdmin = true; }
+
+            // Sync Profile (Cloud Mode): Ensure User Doc exists for Admin List
+            if (db && !CU.isGuest) {
+                try {
+                    await window.firebase.setDoc(window.firebase.doc(db, 'users', uid), {
+                        name: name || email.split('@')[0],
+                        email: email,
+                        role: (email === 'matsukan0207@gmail.com') ? 'admin' : 'user',
+                        lastLogin: new Date().toISOString()
+                    }, { merge: true });
+                } catch (e) { console.error('Profile Sync Error', e); }
+            }
+
+            document.getElementById('authScreen').classList.add('hidden'); document.getElementById('appScreen').classList.remove('hidden');
+            document.getElementById('userEmail').textContent = CU.email; document.getElementById('settEmail').textContent = CU.email; document.getElementById('settName').textContent = CU.name;
+            if (CU.isAdmin) {
+                document.getElementById('adminNav').classList.remove('hidden');
+                document.getElementById('navTopAdmin')?.classList.remove('hidden');
+                document.getElementById('adminActBtn')?.classList.remove('hidden');
+            }
+
+            // Restore Logout Button
+            const loBtn = document.querySelector('#sidebar button[onclick="logout()"]') || document.getElementById('sidebarAuthBtn');
+            const settBtn = document.getElementById('settingsAuthBtn');
+            if (loBtn) {
+                loBtn.id = 'sidebarAuthBtn';
+                loBtn.innerHTML = '🚪 ログアウト';
+                loBtn.onclick = logout;
+                loBtn.classList.remove('text-a-400');
+                loBtn.classList.add('text-gray-500');
+            }
+            if (settBtn) {
+                settBtn.textContent = '🚪 ログアウト';
+                settBtn.onclick = logout;
+                settBtn.className = 'w-full py-2.5 text-sm font-semibold rounded-lg bg-s-700 hover:bg-red-500/20 text-gray-300 hover:text-red-400 border border-gray-700/50 transition-colors';
+            }
+
+            switchTab('owned'); render(); renderTags(); renderWish(); renderEmails(); toast('👋 ようこそ、' + CU.name + 'さん');
+        }
+
+        async function login(uid, u) {
+            // Wrapper for legacy internal calls (like checkSession)
+            await loadUserDataParams(uid, u.email, u.name, u);
+        }
+
+        async function loginGuest() {
+            CU = { uid: 'guest', name: 'Guest', email: 'guest@local', isAdmin: false, isGuest: true };
+            plugins = await loadD('plugins'); wishlist = await loadD('wishlist'); tags = await loadD('tags'); regEmails = await loadD('emails');
+            let hasDefaultTags = localStorage.getItem(uKey('guest', 'tags_init'));
+            if (!hasDefaultTags) {
+                tags = [
+                    { name: 'お気に入り', color: '#f97316' }, { name: 'マスタリング', color: '#a855f7' }, { name: 'ミキシング', color: '#22c55e' },
+                    { name: 'ボーカル', color: '#ec4899' }, { name: 'ドラム', color: '#f43f5e' }, { name: 'ベース', color: '#3b82f6' },
+                    { name: 'シンセ', color: '#06b6d4' }, { name: 'EQ/ダイナミクス', color: '#8b5cf6' }, { name: '空間系', color: '#10b981' },
+                    { name: 'サチュレーション', color: '#ea580c' }, { name: 'モジュレーション', color: '#6366f1' }, { name: 'オーケストラ', color: '#d97706' },
+                    { name: 'シネマティック', color: '#4f46e5' }, { name: 'ローファイ', color: '#7c3aed' }, { name: 'ギター', color: '#b91c1c' },
+                    { name: 'ピアノ/鍵盤', color: '#0891b2' }, { name: 'ユーティリティ', color: '#4b5563' }, { name: '🔥 要チェック', color: '#f59e0b' }
+                ];
+                saveD('tags', tags);
+                localStorage.setItem(uKey('guest', 'tags_init'), '1');
+            }
+            migrateTags(); // Auto-migrate tags
+
+            document.getElementById('authScreen').classList.add('hidden'); document.getElementById('appScreen').classList.remove('hidden');
+            document.getElementById('userEmail').textContent = 'Guest Mode';
+            document.getElementById('settEmail').textContent = 'Guest'; document.getElementById('settName').textContent = 'Guest User';
+
+            // Guest "Login" Button
+            const loBtn = document.querySelector('#sidebar button[onclick="logout()"]') || document.getElementById('sidebarAuthBtn');
+            const settBtn = document.getElementById('settingsAuthBtn');
+            if (loBtn) {
+                loBtn.id = 'sidebarAuthBtn';
+                loBtn.innerHTML = '🔑 ログイン / 登録';
+                loBtn.onclick = () => {
+                    document.getElementById('appScreen').classList.add('hidden');
+                    document.getElementById('authScreen').classList.remove('hidden');
+                };
+                loBtn.classList.remove('text-gray-500');
+                loBtn.classList.add('text-a-400');
+            }
+            if (settBtn) {
+                settBtn.textContent = '🔑 ログイン / 登録';
+                settBtn.onclick = () => {
+                    document.getElementById('appScreen').classList.add('hidden');
+                    document.getElementById('authScreen').classList.remove('hidden');
+                };
+                settBtn.className = 'w-full py-2.5 text-sm font-semibold rounded-lg bg-a-500 hover:bg-a-600 text-white shadow-md transition-colors';
+            }
+
+            switchTab('owned'); render(); renderTags(); renderWish(); renderEmails(); toast('👋 ようこそ、Guestさん');
+        }
+
+        async function logout() {
+            if (auth) await window.firebase.signOut(auth);
+            localStorage.removeItem(K.session);
+            CU = null;
+            location.reload();
+        }
+
+        async function toggleAutoLogin() {
+            if (!auth) return;
+            const chk = document.getElementById('settAutoLogin').checked;
+            const pType = chk ? window.firebase.auth.Auth.Persistence.LOCAL : window.firebase.auth.Auth.Persistence.SESSION;
+            try {
+                await window.firebase.setPersistence(auth, pType);
+                localStorage.setItem('prm_autologin', chk);
+                toast(chk ? '✅ 自動ログイン: ON' : '🔒 自動ログイン: OFF (ブラウザ終了でログアウト)');
+            } catch (e) {
+                console.error(e);
+                toast('❌ 設定変更エラー');
+                document.getElementById('settAutoLogin').checked = !chk; // revert
+            }
+        }
+
+        async function checkSession() {
+            // Restore Auto Login setting into UI
+            const savedAuto = localStorage.getItem('prm_autologin');
+            if (savedAuto !== null) {
+                const isAuto = savedAuto === 'true';
+                const chk = document.getElementById('settAutoLogin');
+                if (chk) chk.checked = isAuto;
+                if (auth) {
+                    const pType = isAuto ? window.firebase.auth.Auth.Persistence.LOCAL : window.firebase.auth.Auth.Persistence.SESSION;
+                    window.firebase.setPersistence(auth, pType).catch(() => { });
+                }
+            }
+
+            const uid = localStorage.getItem(K.session);
+            if (!uid) return;
+
+            if (uid === 'guest') {
+                await loginGuest();
+                return;
+            }
+
+            // For Cloud Users: Firebase onAuthStateChanged will handle restoration.
+            // For Local Users: We need to verify and login.
+            if (!auth) {
+                const users = getUsers();
+                if (users[uid]) { await login(uid, users[uid]); return; }
+            } else {
+                // If Firebase is active, we just wait for the listener.
+                // However, if we haven't entered the app screen yet, we might want to check if a user is already signed in.
+                const user = auth.currentUser;
+                if (user && user.uid === uid) {
+                    await loadUserDataParams(user.uid, user.email, user.displayName || user.email.split('@')[0]);
+                }
+            }
+        }
+
+        // ============ SIDEBAR / TABS ============
+        let currentTab = 'owned';
+        function switchTab(t) {
+            try {
+                currentTab = t;
+
+                // 1. Content Switching
+                ['tabOwned', 'tabWishlist', 'tabSettings', 'tabAdmin'].forEach(id => {
+                    const el = document.getElementById(id);
+                    if (el) el.classList.add('hidden');
+                });
+
+                const titles = { owned: '所有プラグイン', wishlist: '⭐ ウィッシュリスト', settings: '⚙️ 設定', admin: '👑 管理者パネル' };
+                const pt = document.getElementById('pageTitle');
+                if (pt) pt.textContent = titles[t] || '';
+
+                const ta = document.getElementById('topActions');
+                if (ta) ta.style.display = t === 'owned' ? '' : 'none';
+
+                if (t === 'owned') document.getElementById('tabOwned')?.classList.remove('hidden');
+                else if (t === 'wishlist') { document.getElementById('tabWishlist')?.classList.remove('hidden'); if (typeof renderWish === 'function') renderWish(); }
+                else if (t === 'settings') { document.getElementById('tabSettings')?.classList.remove('hidden'); if (typeof renderTags === 'function') renderTags(); }
+                else if (t === 'admin') { document.getElementById('tabAdmin')?.classList.remove('hidden'); if (typeof renderAdmin === 'function') renderAdmin(); }
+
+                if (window.innerWidth < 1024) closeSidebar();
+
+                // 2. Navigation State Updates
+                // Sidebar
+                document.querySelectorAll('.side-item').forEach(el => { el.classList.toggle('active', el.dataset.tab === t); });
+
+                // Bottom Nav
+                document.querySelectorAll('.nav-btn').forEach(b => {
+                    b.classList.remove('text-a-400', 'text-white');
+                    const icon = b.querySelector('.text-xl');
+                    if (icon) icon.classList.remove('text-a-400');
+                });
+                const bMap = { owned: 'navOwned', wishlist: 'navWish', settings: 'navSet' };
+                if (bMap[t]) {
+                    const b = document.getElementById(bMap[t]);
+                    if (b) b.classList.add('text-a-400');
+                }
+
+                // Top Nav
+                document.querySelectorAll('.top-nav-btn').forEach(b => {
+                    b.classList.remove('bg-s-600', 'text-white', 'shadow-sm');
+                    b.classList.add('text-gray-400', 'hover:text-white', 'hover:bg-s-700');
+                });
+                const tMap = { owned: 'navTopOwned', wishlist: 'navTopWishlist', settings: 'navTopSettings', admin: 'navTopAdmin' };
+                if (tMap[t]) {
+                    const b = document.getElementById(tMap[t]);
+                    if (b) {
+                        b.classList.remove('text-gray-400', 'hover:text-white', 'hover:bg-s-700');
+                        b.classList.add('bg-s-600', 'text-white', 'shadow-sm');
+                    }
+                }
+            } catch (e) {
+                console.error('switchTab Error:', e);
+            }
+        }
+
+        function toggleSidebar() { document.getElementById('sidebar').classList.toggle('-translate-x-full'); }
+        function closeSidebar() { document.getElementById('sidebar').classList.add('-translate-x-full'); }
+
+        // ============ SITE MANAGEMENT ============
+        let currentSites = [];
+        function renderSites() {
+            const list = document.getElementById('siteList');
+            if (!currentSites.length) { list.innerHTML = '<div class="text-xs text-gray-500">登録サイトなし</div>'; return; }
+            list.innerHTML = currentSites.map((s, i) => `
+                <div class="flex items-center gap-2 bg-s-700 p-2 rounded-lg border border-gray-700/50">
+                    <span class="text-xs font-bold text-gray-300 w-1/3 truncate" title="${esc(s.name)}">${esc(s.name)}</span>
+                    <a href="${esc(s.url)}" target="_blank" class="flex-1 text-xs text-a-400 truncate hover:underline">${esc(s.url)}</a>
+                    <button type="button" onclick="removeSite(${i})" class="text-gray-500 hover:text-red-400">×</button>
+                </div>
+            `).join('');
+        }
+        function addSite() {
+            const n = document.getElementById('newSiteName').value.trim();
+            const u = document.getElementById('newSiteUrl').value.trim();
+            if (!n || !u) { toast('⚠️ サイト名とURLを入力してください'); return; }
+            currentSites.push({ name: n, url: u });
+            document.getElementById('newSiteName').value = '';
+            document.getElementById('newSiteUrl').value = '';
+            renderSites();
+        }
+        function removeSite(i) {
+            currentSites.splice(i, 1);
+            renderSites();
+        }
+
+        // ============ MODAL ============
+        function openM(id) { document.getElementById(id).classList.remove('hidden'); document.getElementById(id).classList.add('flex'); }
+        function closeM(id) { document.getElementById(id).classList.add('hidden'); document.getElementById(id).classList.remove('flex'); }
+        function openModal(id) {
+            openM('modal'); document.getElementById('pForm').reset(); document.getElementById('fL').type = 'password'; document.getElementById('tLB').textContent = '👁'; renderTagSelect([]);
+            currentSites = [];
+            if (id) {
+                const p = plugins.find(x => x.id === id); if (!p) return; document.getElementById('mTitle').textContent = 'プラグイン編集'; document.getElementById('eId').value = id;
+                document.getElementById('fN').value = p.name; document.getElementById('fM').value = p.maker || ''; document.getElementById('fC').value = p.category || 'インストゥルメント';
+                document.getElementById('fP').value = p.priority || '中'; document.getElementById('fA').value = p.auth || 'その他';
+                // Site migration logic: if p.sites exists use it, otherwise use p.url if present
+                if (p.sites && p.sites.length) {
+                    currentSites = [...p.sites];
+                } else if (p.url) {
+                    currentSites.push({ name: '🌐 公式', url: p.url });
+                }
+                document.getElementById('fL').value = p.license || ''; document.getElementById('fNt').value = p.notes || '';
+                document.getElementById('fIn').checked = !!p.installed; renderTagSelect(p.tags || []);
+            }
+            else { document.getElementById('mTitle').textContent = '新規プラグイン登録'; document.getElementById('eId').value = ''; }
+            renderSites();
+        }
+        function closeModal() { closeM('modal'); }
+        function toggleLP() { const i = document.getElementById('fL'), b = document.getElementById('tLB'); if (i.type === 'password') { i.type = 'text'; b.textContent = '🔒'; } else { i.type = 'password'; b.textContent = '👁'; } }
+
+        // ============ AUTOCOMPLETE ============
+        let acIdx = -1, acResults = [];
+
+        // Fuzzy Search Helper
+        function fuzz(q, t) {
+            if (q === t) return 100;
+            if (t.startsWith(q)) return 80;
+            if (t.includes(q)) return 60;
+            const len = Math.max(q.length, t.length);
+            let match = 0;
+            for (let i = 0; i < q.length; i++) { if (t.includes(q[i])) match++; }
+            return (match / len) * 50;
+        }
+
+        // ============ GEMINI AI ============
+        const GEMINI_API_KEY = "AIzaSyAmzJH9EKEXlGnmwVWArbgRFAqo4zSq2Ww";
+        let geminiKey = localStorage.getItem('prm_gemini_key') || GEMINI_API_KEY;
+        let aiCache = JSON.parse(localStorage.getItem('prm_ai_cache') || '{}');
+        let aiTimer = null;
+
+        function saveGeminiKey() {
+            const v = document.getElementById('geminiKeyInp')?.value.trim();
+            if (!v) { localStorage.removeItem('prm_gemini_key'); geminiKey = GEMINI_API_KEY; toast('🔄 デフォルトキーに戻しました'); return; }
+            geminiKey = v; localStorage.setItem('prm_gemini_key', v); toast('🤖 Gemini APIキー保存完了');
+        }
+
+        async function aiLookup(name) {
+            if (!geminiKey) return null;
+            const ck = name.toLowerCase().trim();
+            if (aiCache[ck]) return aiCache[ck];
+            const prompt = `あなたはDTMプラグインの専門家です。以下のプラグイン名から情報を返してください。\n\nプラグイン名: "${name}"\n\n以下のJSON形式で返答してください:\n{"n":"正式名称","m":"メーカー名","c":"カテゴリー（インストゥルメント|エフェクト|ユーティリティ|その他）","a":"認証方式（iLok USB|iLok Cloud|Steinberg|Native Access|Waves|独自認証|その他）","u":"公式サイトURL"}`;
+            try {
+                const res = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=' + geminiKey, {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }], generationConfig: { temperature: 0.1 } })
+                });
+                const d = await res.json();
+                const txt = d?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+                const m = txt.match(/\{[\s\S]*\}/);
+                if (!m) return null;
+                const obj = JSON.parse(m[0]);
+                if (!obj || !obj.n) return null;
+                obj._ai = true; aiCache[ck] = obj;
+                localStorage.setItem('prm_ai_cache', JSON.stringify(aiCache));
+                return obj;
+            } catch (e) { console.error('Gemini error:', e); return null; }
+        }
+
+        function onPluginInput() {
+            const q = document.getElementById('fN').value.trim().toLowerCase();
+            const drop = document.getElementById('acDrop'), st = document.getElementById('acStatus'), nameInp = document.getElementById('fN');
+            if (q.length < 1) { drop.classList.remove('show'); drop.innerHTML = ''; if (st) st.textContent = ''; nameInp.classList.remove('ai-searching'); clearTimeout(aiTimer); return; }
+
+            acResults = PDB.map(p => {
+                const nScore = fuzz(q, p.n.toLowerCase());
+                const mScore = fuzz(q, p.m.toLowerCase());
+                return { ...p, score: Math.max(nScore, mScore) };
+            }).filter(p => p.score >= 30).sort((a, b) => b.score - a.score).slice(0, 12);
+
+            acIdx = -1;
+            if (acResults.length) {
+                if (st) st.textContent = acResults.length + '件ヒット（内蔵DB）';
+                drop.innerHTML = acResults.map((p, i) => `<div class="ac-item" data-i="${i}" onclick="acSelect(${i})"><div><span class="ac-name">${esc(p.n)}</span> <span class="ac-maker">${esc(p.m)}</span></div><span class="ac-badge">${esc(p.c)}</span></div>`).join('');
+                drop.classList.add('show'); nameInp.classList.remove('ai-searching'); clearTimeout(aiTimer);
+            } else {
+                const cached = aiCache[q];
+                if (cached) {
+                    acResults = [cached];
+                    if (st) st.innerHTML = '<span class="text-a-400">🤖 AI (キャッシュ)</span>';
+                    drop.innerHTML = `<div class="ac-item" data-i="0" onclick="acSelect(0)"><div><span class="ac-name">${esc(cached.n)}</span> <span class="ac-maker">${esc(cached.m)}</span></div><span class="ai-badge">🤖 AI</span></div>`;
+                    drop.classList.add('show'); nameInp.classList.remove('ai-searching');
+                } else if (geminiKey && q.length >= 2) {
+                    if (st) st.textContent = '🔄 AI検索中...';
+                    drop.classList.remove('show'); nameInp.classList.add('ai-searching');
+                    clearTimeout(aiTimer);
+                    aiTimer = setTimeout(async () => {
+                        const cur = document.getElementById('fN').value.trim().toLowerCase();
+                        if (cur !== q) return;
+                        const r = await aiLookup(q);
+                        nameInp.classList.remove('ai-searching');
+                        if (r) {
+                            acResults = [r];
+                            if (st) st.innerHTML = '<span class="text-a-400">🤖 AI発見!</span>';
+                            drop.innerHTML = `<div class="ac-item" data-i="0" onclick="acSelect(0)"><div><span class="ac-name">${esc(r.n)}</span> <span class="ac-maker">${esc(r.m)}</span></div><span class="ai-badge">🤖 AI</span></div>`;
+                            drop.classList.add('show');
+                        } else { if (st) st.textContent = '見つかりません'; }
+                    }, 800);
+                }
+            }
+        }
+
+        function acKeydown(e) {
+            const drop = document.getElementById('acDrop');
+            if (!drop.classList.contains('show')) return;
+            if (e.key === 'ArrowDown') { e.preventDefault(); acIdx = Math.min(acIdx + 1, acResults.length - 1); acHighlight(); }
+            else if (e.key === 'ArrowUp') { e.preventDefault(); acIdx = Math.max(acIdx - 1, 0); acHighlight(); }
+            else if (e.key === 'Enter' && acIdx >= 0) { e.preventDefault(); acSelect(acIdx); }
+        }
+        function acHighlight() { document.querySelectorAll('.ac-item').forEach((el, i) => el.classList.toggle('sel', i === acIdx)); }
+        function acSelect(i) {
+            const p = acResults[i]; if (!p) return;
+            document.getElementById('fN').value = p.n;
+            document.getElementById('fM').value = p.m;
+            document.getElementById('fC').value = p.c;
+            document.getElementById('fA').value = p.a;
+            if (p.u) {
+                currentSites = [{ name: '🌐 公式', url: p.u }];
+                renderSites();
+            }
+            document.getElementById('acDrop').classList.remove('show');
+            document.getElementById('fN').classList.remove('ai-searching');
+            toast((p._ai ? '🤖 ' : '🔍 ') + p.n + ' を自動入力');
+        }
+        document.addEventListener('click', e => { if (!e.target.closest('#fN') && !e.target.closest('#acDrop')) { document.getElementById('acDrop').classList.remove('show'); document.getElementById('fN').classList.remove('ai-searching'); } });
+
+        function openWishModal(id) {
+            openM('wModal'); document.getElementById('wForm').reset();
+            if (id) {
+                const w = wishlist.find(x => x.id === id); if (!w) return; document.getElementById('wMTitle').textContent = 'ウィッシュリスト編集'; document.getElementById('wEId').value = id;
+                document.getElementById('wN').value = w.name; document.getElementById('wMk').value = w.maker || ''; document.getElementById('wPr').value = w.price || '';
+                document.getElementById('wUrl').value = w.url || ''; document.getElementById('wPri').value = w.priority || '中'; document.getElementById('wNt').value = w.notes || '';
+            }
+            else { document.getElementById('wMTitle').textContent = '欲しいプラグイン追加'; document.getElementById('wEId').value = ''; }
+            renderSites(); // Reuse if needed or just clear
+        }
+
+        function onWishInput() {
+            const q = document.getElementById('wN').value.trim().toLowerCase();
+            const drop = document.getElementById('wAcDrop'), st = document.getElementById('wAcStatus'), nameInp = document.getElementById('wN');
+            if (q.length < 1) { drop.classList.remove('show'); drop.innerHTML = ''; if (st) st.textContent = ''; nameInp.classList.remove('ai-searching'); clearTimeout(aiTimer); return; }
+
+            acResults = PDB.map(p => {
+                const nScore = fuzz(q, p.n.toLowerCase());
+                const mScore = fuzz(q, p.m.toLowerCase());
+                return { ...p, score: Math.max(nScore, mScore) };
+            }).filter(p => p.score >= 30).sort((a, b) => b.score - a.score).slice(0, 12);
+
+            acIdx = -1;
+            if (acResults.length) {
+                if (st) st.textContent = acResults.length + '件ヒット';
+                drop.innerHTML = acResults.map((p, i) => `<div class="ac-item" data-i="${i}" onclick="acSelectWish(${i})"><div><span class="ac-name">${esc(p.n)}</span> <span class="ac-maker">${esc(p.m)}</span></div><span class="ac-badge">${esc(p.c)}</span></div>`).join('');
+                drop.classList.add('show'); nameInp.classList.remove('ai-searching'); clearTimeout(aiTimer);
+            } else {
+                const cached = aiCache[q];
+                if (cached) {
+                    acResults = [cached];
+                    if (st) st.innerHTML = '<span class="text-a-400">🤖 AIキャッシュ</span>';
+                    drop.innerHTML = `<div class="ac-item" data-i="0" onclick="acSelectWish(0)"><div><span class="ac-name">${esc(cached.n)}</span> <span class="ac-maker">${esc(cached.m)}</span></div><span class="ai-badge">🤖 AI</span></div>`;
+                    drop.classList.add('show');
+                } else if (geminiKey && q.length >= 2) {
+                    if (st) st.textContent = '🔄 AI検索中...';
+                    drop.classList.remove('show'); nameInp.classList.add('ai-searching');
+                    clearTimeout(aiTimer);
+                    aiTimer = setTimeout(async () => {
+                        const cur = document.getElementById('wN').value.trim().toLowerCase();
+                        if (cur !== q) return;
+                        const r = await aiLookup(q);
+                        nameInp.classList.remove('ai-searching');
+                        if (r) {
+                            acResults = [r];
+                            if (st) st.innerHTML = '<span class="text-a-400">🤖 AI発見!</span>';
+                            drop.innerHTML = `<div class="ac-item" data-i="0" onclick="acSelectWish(0)"><div><span class="ac-name">${esc(r.n)}</span> <span class="ac-maker">${esc(r.m)}</span></div><span class="ai-badge">🤖 AI</span></div>`;
+                            drop.classList.add('show');
+                        } else { if (st) st.textContent = '見つかりませんでした'; }
+                    }, 800);
+                }
+            }
+        }
+
+        function acKeydownWish(e) {
+            const drop = document.getElementById('wAcDrop');
+            if (!drop.classList.contains('show')) return;
+            if (e.key === 'ArrowDown') { e.preventDefault(); acIdx = Math.min(acIdx + 1, acResults.length - 1); acHighlightWish(); }
+            else if (e.key === 'ArrowUp') { e.preventDefault(); acIdx = Math.max(acIdx - 1, 0); acHighlightWish(); }
+            else if (e.key === 'Enter' && acIdx >= 0) { e.preventDefault(); acSelectWish(acIdx); }
+        }
+        function acHighlightWish() { document.querySelectorAll('#wAcDrop .ac-item').forEach((el, i) => el.classList.toggle('sel', i === acIdx)); }
+        function acSelectWish(i) {
+            const p = acResults[i]; if (!p) return;
+            document.getElementById('wN').value = p.n;
+            document.getElementById('wMk').value = p.m;
+            if (p.u) document.getElementById('wUrl').value = p.u;
+            document.getElementById('wAcDrop').classList.remove('show');
+            document.getElementById('wN').classList.remove('ai-searching');
+            toast('✅ 情報を自動入力しました');
+        }
+
+        function handleAddButtonClick() {
+            if (currentTab === 'wishlist') openWishModal();
+            else openModal();
+        }
+        function closeWishModal() { closeM('wModal'); }
+
+        let delTarget = null, delType = 'plugin';
+        function openDelModal(id, type, name) { delTarget = id; delType = type; document.getElementById('delName').textContent = name; openM('delModal'); }
+        function closeDelModal() { closeM('delModal'); delTarget = null; }
+        function confirmDel() {
+            if (!delTarget) return;
+            if (delType === 'plugin') { plugins = plugins.filter(x => x.id !== delTarget); saveD('plugins', plugins); render(); toast('🗑️ 削除しました'); }
+            else { wishlist = wishlist.filter(x => x.id !== delTarget); saveD('wishlist', wishlist); renderWish(); toast('🗑️ 削除しました'); }
+            closeDelModal();
+        }
+
+        // ============ TAG SYSTEM ============
+        let selectedTags = [];
+        let filterTags = new Set(); // For filtering (AND logic)
+
+        function renderTagSelect(sel) {
+            selectedTags = [...sel]; const c = document.getElementById('tagSelect');
+            c.innerHTML = tags.map(t => {
+                const active = selectedTags.includes(t.name);
+                return `<span class="tag border ${active ? 'opacity-100' : 'opacity-40'}" style="border-color:${t.color};color:${t.color};${active ? 'background:' + t.color + '20' : ''}" onclick="toggleTag('${esc(t.name)}')">${esc(t.name)}</span>`;
+            }).join('');
+        }
+        function toggleTag(n) { if (selectedTags.includes(n)) selectedTags = selectedTags.filter(x => x !== n); else selectedTags.push(n); renderTagSelect(selectedTags); }
+
+        function addTag() {
+            const n = document.getElementById('newTagName').value.trim(), c = document.getElementById('newTagColor').value;
+            if (!n) return; if (tags.find(t => t.name === n)) { toast('⚠️ 同名のタグがあります'); return; }
+            tags.push({ name: n, color: c }); saveD('tags', tags); document.getElementById('newTagName').value = ''; renderTags(); renderTagFilterChips(); toast('🏷️ タグ追加: ' + n);
+        }
+        function removeTag(n) { tags = tags.filter(t => t.name !== n); saveD('tags', tags); plugins.forEach(p => { if (p.tags) p.tags = p.tags.filter(t => t !== n); }); saveD('plugins', plugins); renderTags(); renderTagFilterChips(); render(); }
+
+        function renderTags() { document.getElementById('tagList').innerHTML = tags.map(t => `<div class="tag border" style="border-color:${t.color};color:${t.color}"><span class="w-2 h-2 rounded-full inline-block" style="background:${t.color}"></span>${esc(t.name)}<button onclick="removeTag('${esc(t.name)}')" class="ml-1 hover:text-red-400">×</button></div>`).join(''); renderTagFilterChips(); }
+
+        // Filter Logic
+        function renderTagFilterChips() {
+            const list = document.getElementById('chipRowTag');
+            if (!list) return;
+            // Show all tags
+            list.innerHTML = tags.map(t => {
+                const isActive = filterTags.has(t.name);
+                // Use tag color for border/text, and background if active
+                const style = `border-color:${t.color}; color:${isActive ? '#fff' : t.color}; background:${isActive ? t.color : 'transparent'}`;
+                return `<button onclick="toggleFilterTag('${esc(t.name)}')" class="chip border ${isActive ? 'active' : ''}" style="${style}">${esc(t.name)}</button>`;
+            }).join('') + (filterTags.size > 0 ? `<button onclick="clearTagFilter()" class="chip border-red-500/30 text-red-400 hover:bg-red-500/10">✕</button>` : '');
+        }
+
+        function toggleFilterTag(n) {
+            if (filterTags.has(n)) filterTags.delete(n);
+            else filterTags.add(n);
+            renderTagFilterChips();
+            render();
+        }
+
+        function clearTagFilter() {
+            filterTags.clear();
+            renderTagFilterChips();
+            render();
+        }
+
+        // ============ CRUD PLUGINS ============
+        function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 8); }
+        async function savePlugin(e) {
+            if (e) e.preventDefault();
+            console.log('savePlugin started', { CU });
+
+            try {
+                if (!CU) { toast('⚠️ ログインが必要です'); return; }
+
+                // Guest Warning (Non-blocking)
+                if (CU?.isGuest && !guestWarned) {
+                    toast('ℹ️ ゲストモード: ブラウザにのみ保存されます');
+                    guestWarned = true;
+                }
+
+                const id = document.getElementById('eId')?.value;
+                const name = document.getElementById('fN')?.value.trim();
+
+                if (!name) { toast('⚠️ プラグイン名を入力してください'); return; }
+
+                const d = {
+                    id: id || uid(),
+                    name: name,
+                    maker: document.getElementById('fM')?.value.trim() || '',
+                    category: document.getElementById('fC')?.value || 'インストゥルメント',
+                    priority: document.getElementById('fP')?.value || '中',
+                    auth: document.getElementById('fA')?.value || 'その他',
+                    sites: Array.isArray(currentSites) ? [...currentSites] : [],
+                    license: document.getElementById('fL')?.value.trim() || '',
+                    notes: document.getElementById('fNt')?.value.trim() || '',
+                    installed: !!document.getElementById('fIn')?.checked,
+                    tags: Array.isArray(selectedTags) ? [...selectedTags] : [],
+                    updatedAt: new Date().toISOString()
+                };
+
+                console.log('Plugin data object created', d);
+
+                if (id) {
+                    const i = plugins.findIndex(x => x.id === id);
+                    if (i !== -1) plugins[i] = { ...plugins[i], ...d };
+                    toast('✅ 更新しました');
+                } else {
+                    plugins.unshift(d);
+                    toast('✅ 登録しました');
+                }
+
+                await saveD('plugins', plugins);
+                closeModal();
+                render();
+                if (typeof renderTags === 'function') renderTags();
+                console.log('savePlugin finished successfully');
+            } catch (err) {
+                console.error('savePlugin error:', err);
+                toast('❌ 保存エラー: ' + err.message);
+            }
+        }
+
+        function toggleInst(id) { const p = plugins.find(x => x.id === id); if (p) { p.installed = !p.installed; p.updatedAt = new Date().toISOString(); saveD('plugins', plugins); render(); } }
+
+        // ============ CRUD WISHLIST ============
+        async function saveWish(e) {
+            if (e) e.preventDefault();
+            console.log('saveWish started', { CU });
+
+            try {
+                if (!CU) { toast('⚠️ ログインが必要です'); return; }
+
+                // Guest Warning for Wishlist too
+                if (CU?.isGuest && !guestWarned) {
+                    toast('ℹ️ ゲストモード: ブラウザにのみ保存されます');
+                    guestWarned = true;
+                }
+
+                const id = document.getElementById('wEId')?.value;
+                const name = document.getElementById('wN')?.value.trim();
+
+                if (!name) { toast('⚠️ プラグイン名を入力してください'); return; }
+
+                const d = {
+                    id: id || uid(),
+                    name: name,
+                    maker: document.getElementById('wMk')?.value.trim() || '',
+                    price: document.getElementById('wPr')?.value.trim() || '',
+                    url: document.getElementById('wUrl')?.value.trim() || '',
+                    priority: document.getElementById('wPri')?.value || '中',
+                    notes: document.getElementById('wNt')?.value.trim() || '',
+                    updatedAt: new Date().toISOString()
+                };
+
+                if (id) {
+                    const i = wishlist.findIndex(x => x.id === id);
+                    if (i !== -1) wishlist[i] = { ...wishlist[i], ...d };
+                    toast('✅ 更新しました');
+                } else {
+                    d.createdAt = d.updatedAt;
+                    wishlist.push(d);
+                    toast('⭐ ウィッシュリストに追加');
+                }
+
+                await saveD('wishlist', wishlist);
+                closeWishModal();
+                renderWish();
+                console.log('saveWish finished successfully');
+            } catch (err) {
+                console.error('saveWish error:', err);
+                toast('❌ 保存エラー: ' + err.message);
+            }
+        }
+        function moveToOwned(id) {
+            const w = wishlist.find(x => x.id === id); if (!w) return;
+            plugins.push({ id: uid(), name: w.name, maker: w.maker || '', category: 'その他', priority: '中', auth: 'その他', url: w.url || '', license: '', notes: w.notes || '', installed: false, tags: [], createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() });
+            wishlist = wishlist.filter(x => x.id !== id); saveD('plugins', plugins); saveD('wishlist', wishlist); renderWish(); render(); toast('🎉 所有リストへ移動しました');
+        }
+
+        // ============ EXPORT / IMPORT ============
+        let pendingImports = []; // staging area for bulk import
+
+        function openExportModal() {
+            const lines = [];
+            lines.push('=== Plugin Recovery Manager バックアップ ===');
+            const dt = new Date();
+            lines.push('エクスポート日時: ' + dt.getFullYear() + '-' + String(dt.getMonth() + 1).padStart(2, '0') + '-' + String(dt.getDate()).padStart(2, '0'));
+            lines.push('プラグイン数: ' + plugins.length + '件');
+            if (wishlist.length) lines.push('ウィッシュリスト: ' + wishlist.length + '件');
+            lines.push('');
+            plugins.forEach((p, i) => {
+                const status = p.installed ? '✅' : '❌';
+                const tagStr = (p.tags && p.tags.length) ? ' [' + p.tags.join(', ') + ']' : '';
+                lines.push((i + 1) + '. ' + (p.name || '不明') + ' | ' + (p.maker || '-') + ' | ' + (p.category || '-') + ' | ' + (p.auth || '-') + ' | ' + status + tagStr);
+                if (p.notes) lines.push('   メモ: ' + p.notes.replace(/\n/g, ' '));
+                if (p.url) lines.push('   URL: ' + p.url);
+            });
+            if (wishlist.length) {
+                lines.push('');
+                lines.push('--- ウィッシュリスト ---');
+                wishlist.forEach((w, i) => {
+                    lines.push((i + 1) + '. ' + (w.name || '不明') + (w.maker ? ' | ' + w.maker : '') + (w.url ? ' | ' + w.url : ''));
+                });
+            }
+            document.getElementById('exportText').value = lines.join('\n');
+            document.getElementById('exportCount').textContent = plugins.length + ' items';
+            const m = document.getElementById('exportModal');
+            m.classList.remove('hidden');
+            setTimeout(() => m.classList.add('active'), 10);
+        }
+        function closeExportModal() {
+            const m = document.getElementById('exportModal');
+            m.classList.remove('active');
+            setTimeout(() => { m.classList.add('hidden'); m.classList.remove('flex'); }, 300);
+        }
+        function copyExportText() {
+            const el = document.getElementById('exportText');
+            el.select(); el.setSelectionRange(0, 999999);
+            navigator.clipboard.writeText(el.value).then(() => toast('📋 クリップボードにコピーしました')).catch(() => { document.execCommand('copy'); toast('📋 コピーしました'); });
+        }
+        function downloadExportJSON() {
+            const d = { plugins, wishlist, tags, exportedAt: new Date().toISOString(), user: CU?.email || 'guest' };
+            const b = new Blob([JSON.stringify(d, null, 2)], { type: 'application/json' }); const a = document.createElement('a'); a.href = URL.createObjectURL(b);
+            const dt = new Date(); a.download = `prm_backup_${dt.getFullYear()}${String(dt.getMonth() + 1).padStart(2, '0')}${String(dt.getDate()).padStart(2, '0')}.json`;
+            a.click(); URL.revokeObjectURL(a.href); toast('💾 JSONダウンロード完了');
+        }
+
+        function openImportModal() {
+            document.getElementById('importText').value = '';
+            document.getElementById('importPreview').classList.add('hidden');
+            document.getElementById('importProgress').classList.add('hidden');
+            document.getElementById('importResults').innerHTML = '';
+            document.getElementById('bulkImportBtn').disabled = false;
+            document.getElementById('bulkImportBtn').textContent = '🔍 プラグインを検索して登録';
+            document.getElementById('bulkImportBtn').classList.remove('opacity-50', 'cursor-not-allowed');
+            pendingImports = [];
+
+            // Reset tabs
+            switchImportTab('text');
+
+            const m = document.getElementById('importModal');
+            m.classList.remove('hidden');
+            setTimeout(() => m.classList.add('active'), 10);
+        }
+        function closeImportModal() {
+            const m = document.getElementById('importModal');
+            m.classList.remove('active');
+            setTimeout(() => { m.classList.add('hidden'); m.classList.remove('flex'); }, 300);
+        }
+        function switchImportTab(tab) {
+            document.getElementById('tabText').className = `tab-btn ${tab === 'text' ? 'active' : ''}`;
+            document.getElementById('tabJSON').className = `tab-btn ${tab === 'json' ? 'active' : ''}`;
+            document.getElementById('importTabText').style.display = tab === 'text' ? 'block' : 'none';
+            document.getElementById('importTabJSON').style.display = tab === 'json' ? 'block' : 'none';
+        }
+
+        async function bulkImportFromText() {
+            const text = document.getElementById('importText').value.trim();
+            if (!text) { toast('⚠️ プラグイン名を入力してください'); return; }
+            const names = text.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+            if (names.length === 0) { toast('⚠️ プラグイン名が見つかりません'); return; }
+            if (names.length > 100) { toast('⚠️ 一度に100件までです'); return; }
+
+            const btn = document.getElementById('bulkImportBtn');
+            const prog = document.getElementById('importProgress');
+            const progBar = document.getElementById('importProgressBar');
+            const progCount = document.getElementById('importProgressCount');
+
+            btn.disabled = true;
+            btn.classList.add('opacity-50', 'cursor-not-allowed');
+            prog.classList.remove('hidden');
+
+            pendingImports = [];
+            const resultsDiv = document.getElementById('importResults');
+            resultsDiv.innerHTML = '';
+
+            // Helper to clean name for fuzzy search (remove version numbers, "Pro", "The", etc)
+            const cleanName = (n) => {
+                let s = n.toLowerCase();
+                s = s.replace(/v\d+(\.\d+)?/g, ''); // remove v1, v2.5
+                s = s.replace(/pro[\s-]*q\s*\d*/g, 'proq'); // normalize pro-q
+                s = s.replace(/ozone\s*\d*/g, 'ozone'); // normalize ozone
+                s = s.replace(/kontakt\s*\d*/g, 'kontakt'); // normalize kontakt
+                s = s.replace(/[^a-z0-9]/g, ''); // remove spaces and symbols
+                return s;
+            };
+
+            for (let i = 0; i < names.length; i++) {
+                // Update progress
+                const pct = Math.round(((i + 1) / names.length) * 100);
+                progBar.style.width = pct + '%';
+                progCount.textContent = `${i + 1}/${names.length}`;
+                if (i % 5 === 0) await new Promise(r => setTimeout(r, 10));
+
+                const name = names[i];
+                // Check currently registered
+                const existing = plugins.find(p => p.name && p.name.toLowerCase() === name.toLowerCase());
+                if (existing) {
+                    pendingImports.push({ name, status: 'exists', data: existing });
+                    continue;
+                }
+
+                // Smart Fuzzy Search
+                const q = name.toLowerCase();
+                const qClean = cleanName(name);
+
+                let dbMatch = null;
+                let bestScore = 0;
+
+                for (const p of PDB) {
+                    const nLow = p.n.toLowerCase();
+                    let score = 0;
+
+                    // Exact & Strict matches
+                    if (nLow === q) score = 100;
+                    else if (nLow.startsWith(q) && nLow.length - q.length < 5) score = 90; // "Ozone 11" starts with "Ozone" -> OK
+                    else if (q.startsWith(nLow)) score = 90; // "Ozone" starts with "Ozone 11" (reverse check) -> OK
+                    else if (nLow.includes(q)) score = 75;
+
+                    // Loose matching (Version agnostic)
+                    if (score < 80) {
+                        const nClean = cleanName(p.n);
+                        if (nClean === qClean && qClean.length > 3) score = 85; // Cleaned names match exactly
+                        else if (nClean.includes(qClean) && qClean.length > 4) score = 65;
+                    }
+
+                    if (score > bestScore) { bestScore = score; dbMatch = p; }
+                    if (score >= 90) break; // Good enough
+                }
+
+                if (dbMatch && bestScore >= 65) {
+                    pendingImports.push({
+                        name, status: 'found', data: {
+                            name: dbMatch.n, maker: dbMatch.m, category: dbMatch.c, auth: dbMatch.a, url: dbMatch.u || ''
+                        }
+                    });
+                } else if (geminiKey) {
+                    // AI Fallback
+                    try {
+                        const r = await aiLookup(name);
+                        if (r) { pendingImports.push({ name, status: 'ai', data: r }); }
+                        else { pendingImports.push({ name, status: 'manual' }); }
+                    } catch (e) { pendingImports.push({ name, status: 'manual' }); }
+                } else {
+                    pendingImports.push({ name, status: 'manual' });
+                }
+            }
+
+            // Render results
+            prog.classList.add('hidden');
+            const preview = document.getElementById('importPreview');
+            preview.classList.remove('hidden');
+
+            let foundCount = 0;
+            const html = pendingImports.map((res, idx) => {
+                let badgeClass = 'badge-manual';
+                let badgeText = '手動';
+                let isChecked = true;
+                let bgClass = '';
+
+                if (res.status === 'exists') {
+                    badgeClass = 'badge-exists'; badgeText = '登録済み'; isChecked = false; bgClass = 'opacity-60';
+                } else if (res.status === 'found') {
+                    badgeClass = 'badge-found'; badgeText = 'DB一致'; foundCount++;
+                } else if (res.status === 'ai') {
+                    badgeClass = 'badge-ai'; badgeText = '🤖 AI'; foundCount++;
+                }
+
+                const dataDisplay = res.status !== 'manual' && res.status !== 'exists'
+                    ? `<span class="text-[0.6rem] text-gray-400 ml-2">${res.data.maker || ''}</span>`
+                    : '';
+
+                return `
+                    <div class="import-row ${bgClass}" style="animation-delay:${idx * 30}ms">
+                        <input type="checkbox" id="chk_${idx}" ${isChecked ? 'checked' : ''} ${res.status === 'exists' ? 'disabled' : ''} 
+                            class="w-4 h-4 rounded border-gray-600 text-a-500 focus:ring-a-500 bg-s-700">
+                        <div class="flex-1 min-w-0">
+                            <div class="flex items-center gap-2">
+                                <span class="text-xs text-white truncate font-medium">${res.name}</span>
+                                ${dataDisplay}
+                            </div>
+                            ${res.status === 'found' && res.data.name !== res.name ? `<div class="text-[0.6rem] text-gray-500">→ ${res.data.name} として登録</div>` : ''}
+                        </div>
+                        <span class="import-badge ${badgeClass}">${badgeText}</span>
+                    </div>
+                `;
+            }).join('');
+
+            resultsDiv.innerHTML = html;
+            document.getElementById('importSummary').textContent = `${foundCount}件 ヒット`;
+            toast('✅ 検索完了');
+        }
+
+        function confirmBulkImport() {
+            const checkboxes = document.querySelectorAll('[data-import-idx]');
+            let added = 0;
+            checkboxes.forEach(cb => {
+                if (!cb.checked) return;
+                const idx = parseInt(cb.dataset.importIdx);
+                const item = pendingImports[idx];
+                if (item.status === 'exists') return;
+                const d = item.data;
+                plugins.push({
+                    id: uid(), name: d.name, maker: d.maker || '', category: d.category || 'その他',
+                    priority: '中', auth: d.auth || 'その他', url: d.url || '', license: '', notes: '',
+                    installed: false, tags: [], createdAt: new Date().toISOString(), updatedAt: new Date().toISOString()
+                });
+                added++;
+            });
+            if (added > 0) {
+                saveD('plugins', plugins); render();
+                toast('✅ ' + added + '件のプラグインを一括登録しました');
+            } else {
+                toast('⚠️ 登録するプラグインがありません');
+            }
+            closeImportModal();
+        }
+        function cancelBulkImport() {
+            document.getElementById('importPreview').classList.add('hidden');
+            pendingImports = [];
+        }
+
+        function importFromJSON(ev) {
+            const f = ev.target.files[0]; if (!f) return; const r = new FileReader();
+            r.onload = e => {
+                try {
+                    const d = JSON.parse(e.target.result);
+                    if (plugins.length && !confirm(`現在${plugins.length}件のデータがあります。上書きしますか？`)) return;
+                    if (d.plugins) plugins = d.plugins; if (d.wishlist) wishlist = d.wishlist; if (d.tags) tags = d.tags;
+                    saveD('plugins', plugins); saveD('wishlist', wishlist); saveD('tags', tags); render(); renderWish(); renderTags();
+                    toast(`📥 ${(d.plugins || []).length}件インポートしました`);
+                    closeImportModal();
+                } catch { toast('❌ ファイル読み込み失敗'); }
+            };
+            r.readAsText(f); ev.target.value = '';
+        }
+
+        // ============ CATALOG ============
+        // Removed CATALOG_NI in favor of PDB Integration
+
+        const MAKER_URLS = {
+            'Native Instruments': 'https://www.native-instruments.com/',
+            'iZotope': 'https://www.izotope.com/',
+            'Spectrasonics': 'https://www.spectrasonics.net/',
+            'Toontrack': 'https://www.toontrack.com/',
+            'IK Multimedia': 'https://www.ikmultimedia.com/',
+            'Steinberg': 'https://www.steinberg.net/',
+            'u-he': 'https://u-he.com/',
+            'Xfer Records': 'https://xferrecords.com/',
+            'FabFilter': 'https://www.fabfilter.com/',
+            'Waves': 'https://www.waves.com/',
+            'Soundtoys': 'https://www.soundtoys.com/',
+            'Arturia': 'https://www.arturia.com/',
+            'Universal Audio': 'https://www.uaudio.com/',
+            'Valhalla DSP': 'https://valhalladsp.com/',
+            'Kilohearts': 'https://kilohearts.com/',
+            'Output': 'https://output.com/',
+            'Spitfire Audio': 'https://www.spitfireaudio.com/',
+            'Heavyocity': 'https://heavyocity.com/',
+            'Vienna': 'https://www.vsl.co.at/',
+            'Celemony': 'https://www.celemony.com/',
+            'Slate Digital': 'https://slatedigital.com/',
+            'Plugin Alliance': 'https://www.plugin-alliance.com/',
+            'Softube': 'https://www.softube.com/',
+            'SSL': 'https://www.solidstatelogic.com/'
+        };
+
+        const PB_BRANDS = ['iZotope', 'FabFilter', 'Arturia', 'Soundtoys', 'u-he', 'Output', 'Heavyocity', 'Softube', 'SSL', 'Kilohearts', 'Waves', 'Universal Audio', 'Plugin Alliance', 'Toontrack', 'Celemony', 'Excite Audio', 'Baby Audio', 'Cableguys', 'D16 Group'];
+
+        const TAG_TRANSLATION = {
+            'Instrument': '音源', 'Effect': 'エフェクト',
+            'Wavetable': 'ウェーブテーブル', 'FM': 'FMシンセ', 'Analog Modeling': 'アナログモデリング',
+            'Hybrid': 'ハイブリッド', 'Sampler': 'サンプラー',
+            'EQ': 'イコライザー', 'Dynamics': 'ダイナミクス', 'Reverb': 'リバーブ', 'Delay': 'ディレイ', 'Saturation': 'サチュレーション',
+            'NKS': 'NKS対応', 'AI': 'AI搭載', 'DSP': 'DSP動作', 'Waves': 'Waves',
+            'Orchestral': 'オーケストラ', 'Cinematic': 'シネマティック', 'Drums': 'ドラム/パーカッション',
+            'Guitar': 'ギター/ベース', 'Vocal': 'ボーカル', 'Piano': 'ピアノ/鍵盤',
+            'Lo-Fi': 'Lo-Fi', 'Granular': 'グラニュラー', 'Distortion': 'ディストーション'
+        };
+
+        function enrichPlugin(item) {
+            const t = new Set();
+            // Translate existing tags if any
+            (item.t || []).forEach(tag => {
+                t.add(TAG_TRANSLATION[tag] || tag);
+            });
+
+            const n = item.n.toLowerCase(), m = (item.m || '').toLowerCase(), c = item.c;
+            const sites = [];
+
+            // --- URL Generation ---
+            // 1. Official
+            if (MAKER_URLS[item.m]) {
+                sites.push({ name: '🌐 公式', url: MAKER_URLS[item.m] });
+            } else if (item.u && item.u.startsWith('http')) {
+                sites.push({ name: '🌐 公式', url: item.u });
+            }
+
+            // 2. Plugin Boutique (Distributor)
+            if (PB_BRANDS.includes(item.m) || PB_BRANDS.some(b => m.includes(b.toLowerCase()))) {
+                sites.push({ name: '🛒 Plugin Boutique', url: 'https://www.pluginboutique.com/' });
+            }
+
+            // --- Tag Generation (Japanese) ---
+            if (c === 'インストゥルメント') t.add('音源');
+            if (c === 'エフェクト') t.add('エフェクト');
+
+            // Synthesis Types
+            if (n.includes('massive') || n.includes('serum') || n.includes('pigments') || n.includes('ana 2') || n.includes('phase plant')) t.add('ウェーブテーブル');
+            if (n.includes('fm8') || n.includes('dx7') || n.includes('opsix') || n.includes('operator')) t.add('FMシンセ');
+            if (n.includes('diva') || n.includes('monark') || n.includes('repro') || n.includes('juno') || n.includes('jupiter') || m.includes('arturia') || m.includes('u-he')) t.add('アナログモデリング');
+            if (n.includes('omnisphere') || n.includes('falcon') || n.includes('halion')) t.add('ハイブリッド');
+            if (n.includes('kontakt') || n.includes('sampletank') || n.includes('falcon') || n.includes('uvi') || n.includes('battery')) t.add('サンプラー');
+
+            // Processing Types (Effect)
+            if (n.includes('pro-q') || n.includes('eq') || n.includes('filter')) t.add('イコライザー');
+            if (n.includes('pro-c') || n.includes('comp') || n.includes('limiter') || n.includes('cl-1b') || n.includes('pressor')) t.add('ダイナミクス');
+            if (n.includes('pro-r') || n.includes('reverb') || n.includes('room') || n.includes('hall') || n.includes('plate') || n.includes('valhalla')) t.add('リバーブ');
+            if (n.includes('delay') || n.includes('echo') || n.includes('timeless')) t.add('ディレイ');
+            if (n.includes('seat') || n.includes('sat') || n.includes('dist') || n.includes('drive') || n.includes('decapitator') || n.includes('saturn')) t.add('サチュレーション');
+
+            // Features / Tech
+            if (m.includes('native instruments') || m.includes('izotope') || m.includes('arturia') || m.includes('waves') || m.includes('output')) t.add('NKS対応');
+            if (n.includes('ozone') || n.includes('neutron') || n.includes('smart') || n.includes('ai') || n.includes('rx ')) t.add('AI搭載');
+            if (m.includes('universal audio') || n.includes('uad')) t.add('DSP動作');
+            if (m.includes('waves')) t.add('Waves');
+
+            return { tags: Array.from(t), sites };
+        }
+
+        function importFromCatalog(makerFilter) {
+            let list = PDB;
+            if (makerFilter === 'NI') {
+                list = PDB.filter(p => p.m === 'Native Instruments' || (p.t && p.t.includes('NKS')));
+            }
+
+            let added = 0;
+            list.forEach(item => {
+                if (plugins.some(p => p.name === item.n)) return;
+                const enriched = enrichPlugin(item);
+                plugins.push({
+                    id: uid(),
+                    name: item.n, maker: item.m, category: item.c, auth: item.a,
+                    url: '',
+                    sites: enriched.sites,
+                    license: '', notes: '', installed: false,
+                    tags: enriched.tags,
+                    createdAt: new Date().toISOString(), updatedAt: new Date().toISOString()
+                });
+
+                enriched.tags.forEach(t => {
+                    if (!tags.some(tg => tg.name === t)) {
+                        tags.push({ name: t, color: getRandomColor() });
+                    }
+                });
+                added++;
+            });
+
+            if (added > 0) {
+                saveD('plugins', plugins); saveD('tags', tags);
+                render(); renderTags();
+                toast('📚 ' + added + '件のカタログデータを追加しました');
+                closeImportModal();
+            } else {
+                toast('⚠️ 既に追加済みです');
+            }
+        }
+
+        function getRandomColor() {
+            const colors = ['#f87171', '#fb923c', '#fbbf24', '#a3e635', '#34d399', '#22d3ee', '#818cf8', '#c084fc', '#f472b6'];
+            return colors[Math.floor(Math.random() * colors.length)];
+        }
+
+        // ============ ADMIN ============
+        let viewingUser = null; // null = viewing self, string = viewing other user UID
+
+        function setAdminEmail() {
+            console.log("Admin setting disabled");
+        }
+
+        async function renderAdmin() {
+            if (!CU.isAdmin) return;
+            let uList = [];
+
+            if (db) {
+                try {
+                    const snap = await window.firebase.getDocs(window.firebase.collection(db, 'users'));
+                    uList = snap.docs.map(d => ({ uid: d.id, ...d.data() }));
+                } catch (e) { console.error(e); toast('❌ 取得失敗'); return; }
+            } else {
+                const users = getUsers();
+                uList = Object.values(users).map(u => {
+                    const uid = Object.keys(users).find(k => users[k] === u);
+                    return { uid, ...u };
+                });
+            }
+
+            document.getElementById('adUsers').textContent = uList.length;
+
+            // Stats calculation
+            let tp = 0, ti = 0;
+            if (db) {
+                // Cloud Mode: Sum from profiles
+                uList.forEach(u => {
+                    tp += (u.pluginCount || 0);
+                    ti += (u.installedCount || 0);
+                });
+            } else {
+                // Local Mode
+                uList.forEach(u => {
+                    const pd = JSON.parse(localStorage.getItem(uKey(u.uid, 'plugins')) || '[]');
+                    tp += pd.length; ti += pd.filter(p => p.installed).length;
+                });
+            }
+            document.getElementById('adPlugins').textContent = tp; document.getElementById('adInstalled').textContent = ti;
+
+            document.getElementById('adminUserList').innerHTML = uList.map(u => {
+                const isMe = u.uid === CU.uid;
+                const isAdmin = u.email === 'matsukan0207@gmail.com' || u.role === 'admin';
+                return `<div class="flex items-center justify-between bg-s-700 rounded-lg p-3">
+                    <div>
+                        <p class="text-sm text-white font-medium flex items-center gap-2">${esc(u.name)} ${isAdmin ? '<span class="text-[0.6rem] bg-n-o/20 text-n-o border border-n-o/30 px-1 rounded">ADMIN</span>' : ''}</p>
+                        <p class="text-xs text-gray-500">${esc(u.email)}</p>
+                    </div>
+                    <div class="flex items-center gap-3">
+                        <div class="text-right"><p class="text-xs text-gray-400">${new Date(u.createdAt).toLocaleDateString('ja-JP')}</p></div>
+                        ${!isMe ? `<button onclick="viewUser('${u.uid}', '${esc(u.name)}')" class="px-2 py-1 text-xs rounded bg-s-600 hover:bg-a-500 text-gray-300 hover:text-white transition-colors border border-gray-600">👁️ 見る</button>` : '<span class="text-xs text-gray-600 px-2">自分</span>'}
+                    </div>
+                </div>`;
+            }).join('');
+        }
+
+        async function viewUser(uid, name) {
+            viewingUser = uid;
+
+            if (db) {
+                // Cloud Mode: Fetch data
+                // Need to implement loadD_Cloud for specific UID? 
+                // Currently loadD_Cloud uses `currentUserUID`.
+                // Let's implement a targeted fetch here.
+                try {
+                    const pSnap = await window.firebase.getDoc(window.firebase.doc(db, 'users', uid, 'data', 'plugins'));
+                    plugins = pSnap.exists() ? (pSnap.data().list || []) : [];
+                    const wSnap = await window.firebase.getDoc(window.firebase.doc(db, 'users', uid, 'data', 'wishlist'));
+                    wishlist = wSnap.exists() ? (wSnap.data().list || []) : [];
+                    const tSnap = await window.firebase.getDoc(window.firebase.doc(db, 'users', uid, 'data', 'tags'));
+                    tags = tSnap.exists() ? (tSnap.data().list || []) : [];
+                } catch (e) { console.error(e); toast('❌ データ取得失敗'); return; }
+            } else {
+                plugins = JSON.parse(localStorage.getItem(uKey(uid, 'plugins')) || '[]');
+                wishlist = JSON.parse(localStorage.getItem(uKey(uid, 'wishlist')) || '[]');
+                tags = JSON.parse(localStorage.getItem(uKey(uid, 'tags')) || '[]');
+            }
+
+            // UI Updates for View Mode
+            document.getElementById('viewingBanner').classList.remove('hidden');
+            document.getElementById('viewingName').textContent = name;
+            document.body.classList.add('view-mode'); // Add class to body to hide edit actions via CSS if needed
+
+            switchTab('owned');
+            render();
+            renderWish();
+            renderTags();
+            toast('👁️ ' + name + 'さんのデータを閲覧中');
+        }
+
+        function exitView() {
+            viewingUser = null;
+            document.getElementById('viewingBanner').classList.add('hidden');
+            document.body.classList.remove('view-mode');
+            login(CU.uid, CU); // Reload own data
+            toast('🔙 自分のデータに戻りました');
+        }
+
+        // ============ FILTERS ============
+        // ============ FILTERS ============
+        function clearF() { ['searchInp', 'fCat', 'fPri', 'fAuth', 'fStat'].forEach(id => document.getElementById(id).value = ''); document.getElementById('fSort').value = 'pri'; clearTagFilter(); }
+        function getF() {
+            const s = document.getElementById('searchInp').value.toLowerCase().trim(), c = document.getElementById('fCat').value,
+                p = document.getElementById('fPri').value, a = document.getElementById('fAuth').value, st = document.getElementById('fStat').value;
+            // AND logic: Plugin must have ALL selected tags
+            const activeTags = Array.from(filterTags);
+
+            return plugins.filter(pl => {
+                if (s && !(pl.name.toLowerCase().includes(s) || (pl.maker || '').toLowerCase().includes(s))) return false;
+                if (c && pl.category !== c) return false; if (p && pl.priority !== p) return false; if (a && pl.auth !== a) return false;
+                if (st === '1' && !pl.installed) return false; if (st === '0' && pl.installed) return false;
+
+                if (activeTags.length) {
+                    const pTags = pl.tags || [];
+                    if (!activeTags.every(t => pTags.includes(t))) return false;
+                }
+                return true;
+            });
+        }
+
+        // One-time migration for tags
+        function migrateTags() {
+            let changed = false;
+            // 1. Migrate Global Tags List
+            const newTags = [];
+            tags.forEach(t => {
+                const trans = TAG_TRANSLATION[t.name];
+                if (trans) {
+                    if (!newTags.find(x => x.name === trans)) newTags.push({ ...t, name: trans });
+                    changed = true;
+                } else {
+                    if (!newTags.find(x => x.name === t.name)) newTags.push(t);
+                }
+            });
+            if (changed) { tags = newTags; saveD('tags', tags); }
+
+            // 2. Migrate Plugin Tags
+            let pChanged = false;
+            plugins.forEach(p => {
+                if (p.tags && p.tags.length) {
+                    const newPTags = new Set();
+                    let thisChanged = false;
+                    p.tags.forEach(t => {
+                        const trans = TAG_TRANSLATION[t];
+                        if (trans) { newPTags.add(trans); thisChanged = true; }
+                        else newPTags.add(t);
+                    });
+                    if (thisChanged) { p.tags = Array.from(newPTags); pChanged = true; }
+                }
+            });
+            if (pChanged) { saveD('plugins', plugins); }
+
+            if (changed || pChanged) {
+                toast('♻️ タグを日本語に変換しました');
+                renderTags(); renderTagFilterChips(); render();
+            }
+        }
+        function sortList(arr) {
+            const m = document.getElementById('fSort').value, ord = { '高(即復旧)': 0, '中': 1, '低': 2 };
+            return [...arr].sort((a, b) => {
+                if (m === 'name') return a.name.localeCompare(b.name);
+                if (m === 'maker') return (a.maker || '').localeCompare(b.maker || '');
+                if (m === 'updated') return new Date(b.updatedAt) - new Date(a.updatedAt);
+                const pa = ord[a.priority] ?? 1, pb = ord[b.priority] ?? 1; if (pa !== pb) return pa - pb;
+                if (a.installed !== b.installed) return a.installed ? 1 : -1; return a.name.localeCompare(b.name);
+            });
+        }
+
+        // ============ RENDER & CHIPS ============
+        function esc(s) { if (!s) return ''; const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+        function toast(m) { const t = document.getElementById('toast'); t.textContent = m; t.classList.remove('hidden'); setTimeout(() => t.classList.add('hidden'), 2400); }
+        function priBdg(p) {
+            const m = { '高(即復旧)': 'bg-red-500/20 text-red-400 border border-red-500/30', '中': 'bg-yellow-500/20 text-yellow-400 border border-yellow-500/30', '低': 'bg-gray-600/30 text-gray-400 border border-gray-600/30' };
+            return `<button onclick="setChip('fPri', '${p}'); event.stopPropagation();" class="bdg hover:opacity-80 transition-opacity ${m[p] || m['中']}">${p}</button>`;
+        }
+        function catIco(c) { return { 'インストゥルメント': '🎹', 'エフェクト': '🎛️', 'ユーティリティ': '🔧', 'その他': '📦' }[c] || '📦'; }
+
+        // Chip & Sort Logic
+        function setChip(id, val) {
+            const sel = document.getElementById(id);
+            if (!sel) return;
+            // Toggle logic for non-Category chips
+            if (id !== 'fCat' && sel.value === val) sel.value = '';
+            else sel.value = val;
+            render();
+        }
+
+        function updateChipVisuals() {
+            // Category
+            const cVal = document.getElementById('fCat').value;
+            document.querySelectorAll('#chipRowCat .chip').forEach(c => {
+                c.classList.toggle('active', c.dataset.val === cVal);
+            });
+            // Sub Chips
+            document.querySelectorAll('#chipRowSub .chip[data-target]').forEach(c => {
+                const sel = document.getElementById(c.dataset.target);
+                c.classList.toggle('active', sel.value === c.dataset.val);
+            });
+        }
+
+        function toggleSort() {
+            const s = document.getElementById('fSort');
+            const ord = ['pri', 'updated', 'name', 'maker'];
+            let idx = ord.indexOf(s.value);
+            s.value = ord[(idx + 1) % ord.length];
+            const labels = { pri: '重要度順', updated: '更新日順', name: '名前順', maker: 'メーカー順' };
+            document.getElementById('sortLabel').textContent = labels[s.value];
+            render();
+        }
+
+        function render() {
+            updateChipVisuals();
+            const list = document.getElementById('pList'), empty = document.getElementById('emptyOwned'), fil = getF(), sorted = sortList(fil);
+
+            // Active Filter Summary
+            const sumEl = document.getElementById('filterSummary');
+            if (sumEl) {
+                const activeFilters = [];
+                const c = document.getElementById('fCat').value; if (c) activeFilters.push(`[${c}]`);
+                const p = document.getElementById('fPri').value; if (p) activeFilters.push(`[優先:${p}]`);
+                const a = document.getElementById('fAuth').value; if (a) activeFilters.push(`[${a}]`);
+                const st = document.getElementById('fStat').value; if (st === '1') activeFilters.push('[インストール済]'); else if (st === '0') activeFilters.push('[未インストール]');
+                filterTags.forEach(t => activeFilters.push(`[#${t}]`));
+
+                if (activeFilters.length > 0) {
+                    sumEl.textContent = '絞り込み中: ' + activeFilters.join(' ');
+                    sumEl.classList.remove('hidden');
+                } else {
+                    sumEl.classList.add('hidden');
+                }
+            }
+
+            const t = plugins.length, ins = plugins.filter(p => p.installed).length;
+            const pct = t > 0 ? Math.round(ins / t * 100) : 0;
+
+            // Update Main Ring
+            const mr = document.getElementById('mainProgRing'), mp = document.getElementById('mainProgPct'), mt = document.getElementById('mainProgTxt');
+            if (mr) {
+                const circ = 263.9;
+                mr.style.strokeDashoffset = circ - (pct / 100) * circ;
+                mp.textContent = pct + '%';
+                mt.textContent = `${ins} / ${t}`;
+            }
+            // Sidebar ring
+            const ring = document.getElementById('progRing');
+            const ringPct = document.getElementById('progRingPct');
+            const sidebarProg = document.getElementById('sidebarProgress');
+            if (ring && sidebarProg) {
+                sidebarProg.style.display = t ? '' : 'none';
+                const circumference = 188.5; // 2 * PI * 30
+                ring.style.strokeDashoffset = circumference - (pct / 100) * circumference;
+                ringPct.textContent = pct + '%';
+            }
+            if (!t) { list.innerHTML = ''; empty.classList.remove('hidden'); return; }
+            empty.classList.add('hidden');
+            if (!sorted.length) { list.innerHTML = '<div class="col-span-full text-center py-12 text-gray-500 text-sm">条件に一致するプラグインがありません</div>'; return; }
+
+            const isReadOnly = !!viewingUser;
+
+            list.innerHTML = sorted.map((p, i) => {
+                const opc = p.installed ? 'opacity-60' : '', bc = p.installed ? 'border-green-800/30' : p.priority === '高(即復旧)' ? 'border-red-800/30' : 'border-gray-800/50';
+                const tgs = (p.tags || []).map(tn => { const tObj = tags.find(x => x.name === tn); const tc = tObj ? tObj.color : '#666'; return `<button onclick="toggleFilterTag('${esc(tn)}')" class="tag border hover:opacity-80 transition-opacity" style="border-color:${tc};color:${tc}">${esc(tn)}</button>`; }).join('');
+                return `<div class="bg-s-800 rounded-xl border ${bc} p-4 card-h stagger-item relative ${opc}" style="animation-delay:${i * 50}ms">
+${p.installed ? '<div class="absolute top-3 right-3 text-green-400 text-xs font-semibold flex items-center gap-1"><span class="w-2 h-2 bg-green-400 rounded-full"></span>完了</div>' : ''}
+<div class="flex items-start gap-3 mb-2"><span class="text-2xl">${catIco(p.category)}</span><div class="flex-1 min-w-0">
+<h3 class="font-bold text-white text-sm truncate ${p.installed ? 'line-through decoration-green-600/50' : ''}">${esc(p.name)}</h3>
+${p.maker ? `<p class="text-xs text-gray-500 truncate">${esc(p.maker)}</p>` : ''}</div></div>
+<div class="flex flex-wrap gap-1 mb-2">${priBdg(p.priority)}<button onclick="setChip('fAuth', '${esc(p.auth)}'); event.stopPropagation();" class="bdg bg-a-500/15 text-a-400 border border-a-500/25 hover:opacity-80 transition-opacity">${esc(p.auth)}</button>${tgs}</div>
+${p.email ? `<p class="text-xs text-gray-500 truncate mb-1">📧 ${esc(p.email)}</p>` : ''}
+${p.license ? `<div class="flex items-center gap-1 mb-1"><span class="text-xs text-gray-500">🔑</span><span class="text-xs text-gray-400 font-mono" id="lc-${p.id}">••••••••</span><button onclick="togLic('${p.id}')" class="text-xs text-gray-600 hover:text-a-400 ml-1">👁</button></div>` : ''}
+${(p.sites && p.sites.length) ? `<div class="flex flex-wrap gap-2 mb-1">` + p.sites.map(s => `<a href="${esc(s.url)}" target="_blank" class="px-2 py-1 bg-s-700 hover:bg-s-600 border border-gray-700/50 rounded text-xs text-a-400 hover:text-a-300 transition-colors">${esc(s.name)}</a>`).join('') + `</div>` : (p.url ? `<a href="${esc(p.url)}" target="_blank" class="text-xs text-a-400 hover:text-a-500 truncate block mb-1">🔗 公式サイト</a>` : '')}
+${p.notes ? `<p class="text-xs text-gray-600 truncate mb-1">📝 ${esc(p.notes)}</p>` : ''}
+<div class="flex items-center justify-between pt-2 mt-2 border-t border-gray-800/40">
+<label class="flex items-center gap-2 ${isReadOnly ? 'cursor-not-allowed opacity-50' : 'cursor-pointer group'}">
+<input type="checkbox" ${p.installed ? 'checked' : ''} ${isReadOnly ? 'disabled' : `onchange="toggleInst('${p.id}')"`} class="w-4 h-4 accent-green-500 rounded ${isReadOnly ? '' : 'cursor-pointer'}">
+<span class="text-xs text-gray-500 ${isReadOnly ? '' : 'group-hover:text-gray-300'}">インストール済</span></label>
+${!isReadOnly ? `<div class="flex gap-1"><button onclick="openModal('${p.id}')" class="p-1 rounded hover:bg-s-600 text-gray-500 hover:text-a-400 text-xs">✏️</button>
+<button onclick="openDelModal('${p.id}','plugin','${esc(p.name)}')" class="p-1 rounded hover:bg-s-600 text-gray-500 hover:text-red-400 text-xs">🗑️</button></div>` : ''}</div></div>`;
+            }).join('');
+        }
+
+        function togLic(id) {
+            const el = document.getElementById('lc-' + id); const p = plugins.find(x => x.id === id); if (!p) return;
+            if (el.dataset.v === '1') { el.textContent = '••••••••'; el.dataset.v = '0'; } else { el.textContent = p.license; el.dataset.v = '1'; }
+        }
+
+        function renderWish() {
+            const list = document.getElementById('wList'), empty = document.getElementById('emptyWish');
+            if (!wishlist.length) { list.innerHTML = ''; empty.classList.remove('hidden'); return; }
+            empty.classList.add('hidden'); const ord = { '高': 0, '中': 1, '低': 2 };
+            const sorted = [...wishlist].sort((a, b) => (ord[a.priority] ?? 1) - (ord[b.priority] ?? 1));
+            const isReadOnly = !!viewingUser;
+
+            list.innerHTML = sorted.map(w => `<div class="bg-s-800 rounded-xl border border-gray-800/50 p-4 card-h fi">
+<div class="flex items-start gap-3 mb-2"><span class="text-2xl">⭐</span><div class="flex-1 min-w-0">
+<h3 class="font-bold text-white text-sm truncate">${esc(w.name)}</h3>
+${w.maker ? `<p class="text-xs text-gray-500">${esc(w.maker)}</p>` : ''}</div></div>
+<div class="flex flex-wrap gap-1 mb-2">${priBdg(w.priority === '高' ? '高(即復旧)' : w.priority)}
+${w.price ? `<span class="bdg bg-green-500/15 text-green-400 border border-green-500/25">${esc(w.price)}</span>` : ''}</div>
+${w.url ? `<a href="${esc(w.url)}" target="_blank" class="text-xs text-a-400 hover:text-a-500 truncate block mb-1">🔗 購入リンク</a>` : ''}
+${w.notes ? `<p class="text-xs text-gray-600 truncate mb-1">📝 ${esc(w.notes)}</p>` : ''}
+<div class="flex items-center justify-between pt-2 mt-2 border-t border-gray-800/40">
+${!isReadOnly ? `<button onclick="moveToOwned('${w.id}')" class="text-xs text-green-400 hover:text-green-300 font-medium">🎉 購入済み→所有へ</button>
+<div class="flex gap-1"><button onclick="openWishModal('${w.id}')" class="p-1 rounded hover:bg-s-600 text-gray-500 hover:text-a-400 text-xs">✏️</button>
+<button onclick="openDelModal('${w.id}','wish','${esc(w.name)}')" class="p-1 rounded hover:bg-s-600 text-gray-500 hover:text-red-400 text-xs">🗑️</button></div>` : '<span class="text-xs text-gray-500">閲覧専用モード</span>'}</div></div>`).join('');
+        }
+
+        // ============ KEYBOARD ============
+        document.addEventListener('keydown', e => { if (e.key === 'Escape') { closeModal(); closeWishModal(); closeDelModal(); } });
+
+        // ============ INITIALIZATION ============
+        window.addEventListener('load', () => {
+            initFirebase();
+            checkSession();
+        });
+
+    </script>
+
+</body>
+
+</html>
