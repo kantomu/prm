@@ -100,10 +100,245 @@
                 background-position: 200% 0
             }
 
-            100% {
+            to {
                 background-position: -200% 0
             }
         }
+
+        /* Notion-style Memo CSS */
+        .memo-sidebar {
+            width: 240px;
+            border-right: 1px solid rgba(255, 255, 255, 0.05);
+            background: rgba(13, 13, 18, 0.5);
+        }
+
+        .memo-item {
+            padding: 4px 8px;
+            border-radius: 4px;
+            cursor: pointer;
+            display: flex;
+            align-items: baseline;
+            gap: 8px;
+            font-size: 0.85rem;
+            color: #94a3b8;
+            transition: all 0.2s;
+        }
+
+        .memo-item:hover {
+            background: rgba(255, 255, 255, 0.05);
+            color: #f1f5f9;
+        }
+
+        .memo-item.active {
+            background: rgba(255, 255, 255, 0.1);
+            color: #fff;
+            font-weight: 500;
+        }
+
+        .block-list {
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 40px 20px;
+        }
+
+        .memo-title-inp {
+            font-size: 2.5rem;
+            font-weight: 700;
+            background: transparent !important;
+            border: none !important;
+            width: 100%;
+            margin-bottom: 24px;
+            color: #fff !important;
+            padding: 0 !important;
+            box-shadow: none !important;
+        }
+
+        .block {
+            position: relative;
+            padding: 4px 0;
+            margin: 2px 0;
+            min-height: 1.5em;
+            cursor: default;
+        }
+
+        .block[draggable="true"]:hover {
+            background: rgba(255, 255, 255, 0.02);
+        }
+
+        .block.drag-over {
+            border-top: 2px solid rgba(56, 189, 248, 0.5);
+        }
+
+        .block-text {
+            outline: none;
+            white-space: pre-wrap;
+            word-break: break-word;
+            font-size: 1rem;
+            color: #e2e8f0;
+            line-height: 1.6;
+            padding-left: 4px;
+        }
+
+        .block-text:empty:before {
+            content: attr(data-placeholder);
+            color: #475569;
+            pointer-events: none;
+        }
+
+        .block-plugin {
+            background: #1c1c28;
+            border: 1px solid rgba(56, 189, 248, 0.2);
+            border-radius: 8px;
+            padding: 12px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin: 12px 0;
+            transition: all 0.2s;
+        }
+
+        .block-plugin:hover {
+            border-color: rgba(56, 189, 248, 0.5);
+            background: #242434;
+        }
+
+        .slash-menu {
+            position: absolute;
+            background: #1c1c28;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 8px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+            width: 200px;
+            z-index: 1000;
+            overflow: hidden;
+            backdrop-filter: blur(10px);
+        }
+
+        .slash-item {
+            padding: 8px 12px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 0.85rem;
+            color: #94a3b8;
+            transition: all 0.2s;
+        }
+
+        .slash-item:hover,
+        .slash-item.selected {
+            background: rgba(56, 189, 248, 0.1);
+            color: #fff;
+        }
+
+        .indent-1 {
+            margin-left: 20px;
+        }
+
+        .indent-2 {
+            margin-left: 40px;
+        }
+
+        .indent-3 {
+            margin-left: 60px;
+        }
+
+        /* Themes */
+        .theme-sepia {
+            background: #f4ecd8 !important;
+            color: #5f4b32 !important;
+        }
+
+        .theme-sepia .memo-sidebar {
+            background: #e8dfc4;
+            border-color: #d8cea6;
+        }
+
+        .theme-sepia .block-text,
+        .theme-sepia .memo-title-inp {
+            color: #5f4b32 !important;
+        }
+
+        .theme-mono {
+            background: #000 !important;
+            color: #fff !important;
+            font-family: 'JetBrains Mono', monospace !important;
+        }
+
+        .theme-mono * {
+            font-family: 'JetBrains Mono', monospace !important;
+        }
+
+        .theme-mono .memo-sidebar {
+            background: #111;
+            border-color: #333;
+        }
+
+        /* Memo Sidebar Collapsible */
+        .memo-sidebar {
+            width: 240px;
+            border-right: 1px solid rgba(255, 255, 255, 0.05);
+            background: rgba(13, 13, 18, 0.5);
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .memo-sidebar.collapsed {
+            width: 0 !important;
+            padding: 0 !important;
+            overflow: hidden !important;
+            border-right: none !important;
+        }
+
+        .memo-sidebar-toggle {
+            position: absolute;
+            left: 240px;
+            top: 50%;
+            transform: translateY(-50%);
+            background: rgba(20, 20, 28, 0.9);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-left: none;
+            border-radius: 0 8px 8px 0;
+            padding: 20px 6px;
+            color: #64748b;
+            cursor: pointer;
+            z-index: 50;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .memo-sidebar-toggle:hover {
+            color: #fff;
+            background: #242434;
+            padding-right: 10px;
+        }
+
+        .memo-sidebar.collapsed+.memo-sidebar-toggle {
+            left: 0;
+        }
+
+        .memo-item {
+            transition: background 0.2s;
+            cursor: pointer;
+            border-radius: 6px;
+            margin: 0 4px;
+        }
+
+        .memo-item:hover {
+            background: rgba(255, 255, 255, 0.03);
+        }
+
+        .memo-item.active {
+            background: rgba(56, 189, 248, 0.1);
+            color: #38bdf8;
+        }
+
+        .memo-item.drag-over {
+            box-shadow: inset 0 2px 0 #38bdf8;
+            background: rgba(56, 189, 248, 0.05);
+        }
+
 
         .bdg {
             font-size: .65rem;
@@ -880,6 +1115,77 @@
                     </div>
                 </div>
 
+                <!-- TAB: MEMO (Notion-style) -->
+                <div id="tabMemo"
+                    class="hidden flex h-[calc(100vh-140px)] overflow-hidden rounded-xl border border-gray-800/50 bg-s-800">
+                    <!-- Memo Sidebar -->
+                    <aside id="memoSidebar" class="memo-sidebar flex flex-col shrink-0 relative">
+                        <div class="p-4 border-b border-white/5 flex items-center justify-between">
+                            <span class="text-[0.6rem] font-bold text-gray-500 tracking-wider uppercase">ワークスペース</span>
+                            <div class="flex gap-2">
+                                <button onclick="addMemoPage(null, 'folder')"
+                                    class="text-gray-500 hover:text-white text-xs" title="新規フォルダ">📂+</button>
+                                <button onclick="addMemoPage(null, 'page')"
+                                    class="text-gray-500 hover:text-white text-xs" title="新規ページ">📄+</button>
+                                <button onclick="toggleMemoSidebar()"
+                                    class="text-gray-500 hover:text-white text-xs ml-1" title="閉じる">◀</button>
+                            </div>
+                        </div>
+                        <div id="memoTree" class="flex-1 overflow-y-auto p-1 flex flex-col gap-0.5 custom-scrollbar">
+                            <!-- Hierarchical list of pages/folders -->
+                        </div>
+                    </aside>
+
+                    <!-- Toggle Button -->
+                    <button id="memoSidebarToggle" onclick="toggleMemoSidebar()" class="memo-sidebar-toggle"
+                        title="サイドバーの表示/非表示">
+                        <span id="toggleIcon">◀</span>
+                    </button>
+
+                    <!-- Memo Content -->
+                    <main class="flex-1 overflow-y-auto relative bg-s-900/40 custom-scrollbar" id="memoView">
+                        <div
+                            class="sticky top-0 z-10 bg-s-900/80 backdrop-blur-md border-b border-white/5 px-6 py-2 flex items-center justify-between">
+                            <div class="flex items-center gap-2 text-[0.7rem] text-gray-500">
+                                <span id="memoBreadcrumbs">Workspace</span>
+                            </div>
+                            <div class="flex gap-2">
+                                <select onchange="applyMemoTheme(this.value)"
+                                    class="bg-s-700 border border-white/10 text-[0.6rem] rounded px-2 py-0.5 outline-none">
+                                    <option value="default">Default Dark</option>
+                                    <option value="sepia">Sepia</option>
+                                    <option value="mono">Mono</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div id="memoEditor" class="block-list hidden">
+                            <input type="text" id="memoActiveTitle" class="memo-title-inp" placeholder="無題"
+                                oninput="updateMemoTitle()">
+                            <div id="blockContainer" class="flex flex-col pb-64" onclick="handleEditorClick(event)">
+                                <!-- Blocks go here -->
+                            </div>
+                        </div>
+                        <div id="emptyMemo" class="flex flex-col items-center justify-center h-full text-gray-600">
+                            <span class="text-6xl mb-4">📓</span>
+                            <p class="text-sm">ページを選択するか、新しく作成してください</p>
+                            <button onclick="addMemoPage()"
+                                class="mt-4 text-a-400 hover:underline text-sm font-medium">ページを作成</button>
+                        </div>
+                    </main>
+                </div>
+            </div>
+
+            <!-- Slash Menu Template (Global) -->
+            <div id="slashMenu" class="slash-menu hidden">
+                <div
+                    class="p-2 text-[0.65rem] font-bold text-gray-500 uppercase tracking-widest border-b border-white/5 mb-1">
+                    基本</div>
+                <div class="slash-item" onclick="insertBlock('text', slashTargetBlockId)"><span>⌨️</span> テキスト</div>
+                <div class="slash-item" onclick="insertBlock('h1', slashTargetBlockId)"><span>H1</span> 大見出し</div>
+                <div class="slash-item" onclick="insertBlock('h2', slashTargetBlockId)"><span>H2</span> 中見出し</div>
+                <div class="slash-item" onclick="insertBlock('plugin', slashTargetBlockId)"><span>🎹</span> プラグインを挿入
+                </div>
+                <div class="slash-item" onclick="insertBlock('page', slashTargetBlockId)"><span>📄</span> 子ページを作成</div>
             </div>
 
             <!-- BOTTOM NAV (Mobile) -->
@@ -896,15 +1202,21 @@
                     id="navWish">
                     <span class="text-xl">⭐</span><span class="text-[0.6rem] font-medium">欲しい</span>
                 </button>
-                <div class="relative -top-6">
+                <div class="relative -top-4">
                     <button onclick="handleAddButtonClick()"
-                        class="flex flex-col items-center justify-center text-white w-14 h-14 bg-gradient-to-br from-a-400 to-a-600 rounded-full border-4 border-s-900 shadow-lg shadow-a-500/40 active:scale-95 transition-transform hover:shadow-a-500/60 hover:-translate-y-1">
+                        class="w-14 h-14 bg-n-o hover:bg-orange-600 text-white rounded-full shadow-lg shadow-orange-500/20 flex items-center justify-center transition-all hover:scale-110 active:scale-95 border-4 border-s-900">
                         <span class="text-2xl font-bold mb-0.5">＋</span>
                     </button>
                 </div>
-                <button onclick="openImportModal()"
-                    class="nav-btn flex flex-col items-center gap-0.5 text-gray-500 hover:text-gray-300 w-14 rounded-xl active:bg-white/5 transition-all p-2">
-                    <span class="text-xl">📥</span><span class="text-[0.6rem] font-medium">登録</span>
+                <button onclick="switchTab('memo');window.scrollTo({top:0,behavior:'smooth'})"
+                    class="nav-btn flex flex-col items-center gap-0.5 text-gray-500 hover:text-gray-300 w-14 rounded-xl active:bg-white/5 transition-all p-2"
+                    id="navMemo">
+                    <span class="text-xl">📝</span><span class="text-[0.6rem] font-medium">メモ</span>
+                </button>
+                <button onclick="switchTab('admin');window.scrollTo({top:0,behavior:'smooth'})"
+                    class="nav-btn flex flex-col items-center gap-0.5 text-gray-500 hover:text-gray-300 w-14 rounded-xl active:bg-white/5 transition-all p-2 hidden"
+                    id="navAdmin">
+                    <span class="text-xl">👑</span><span class="text-[0.6rem] font-medium">管理</span>
                 </button>
                 <button onclick="switchTab('settings');window.scrollTo({top:0,behavior:'smooth'})"
                     class="nav-btn flex flex-col items-center gap-0.5 text-gray-500 hover:text-gray-300 w-14 rounded-xl active:bg-white/5 transition-all p-2"
@@ -1321,6 +1633,25 @@
         </div>
     </div>
 
+    <!-- PLUGIN PICKER MODAL (For Memo) -->
+    <div id="pickerModal"
+        class="fixed inset-0 z-[60] hidden items-center justify-center mb bg-black/80 backdrop-blur-sm">
+        <div
+            class="bg-s-800 border border-gray-700/50 rounded-2xl w-full max-w-md mx-4 max-h-[80vh] flex flex-col shadow-2xl fi">
+            <div class="p-4 border-b border-gray-800/50 flex items-center justify-between">
+                <h3 class="text-sm font-bold text-white">プラグインを選択</h3>
+                <button onclick="closePicker()" class="text-gray-500 hover:text-white">&times;</button>
+            </div>
+            <div class="p-4 border-b border-gray-800/50">
+                <input type="text" id="pickerSearch" oninput="renderPicker()" placeholder="検索..."
+                    class="w-full px-3 py-2 text-sm bg-s-700 border border-gray-700/50 rounded-lg outline-none">
+            </div>
+            <div id="pickerList" class="flex-1 overflow-y-auto p-2 space-y-1 custom-scrollbar">
+                <!-- Selectable plugins -->
+            </div>
+        </div>
+    </div>
+
     <!-- DELETE CONFIRM MODAL -->
     <div id="delModal" class="fixed inset-0 z-50 hidden items-center justify-center mb bg-black/60 modal-bg">
         <div
@@ -1473,7 +1804,7 @@
         }
 
 
-        let CU = null, plugins = [], wishlist = [], tags = [], regEmails = [];
+        let plugins = [], wishlist = [], tags = [], regEmails = [], memos = [];
         let guestWarned = false;
 
         // ============ AUTH ============
@@ -1605,9 +1936,11 @@
                 wishlist = await loadD_Cloud('wishlist');
                 tags = await loadD_Cloud('tags');
                 regEmails = await loadD_Cloud('emails');
+                memos = await loadD_Cloud('memos');
             } else {
-                plugins = await loadD('plugins'); wishlist = await loadD('wishlist'); tags = await loadD('tags'); regEmails = await loadD('emails');
+                plugins = await loadD('plugins'); wishlist = await loadD('wishlist'); tags = await loadD('tags'); regEmails = await loadD('emails'); memos = await loadD('memos');
             }
+            await initMemoManual();
 
             if (!tags.length) tags = [
                 { name: 'お気に入り', color: '#f97316' }, { name: 'マスタリング', color: '#a855f7' }, { name: 'ミキシング', color: '#22c55e' },
@@ -1637,6 +1970,7 @@
             if (CU.isAdmin) {
                 document.getElementById('adminNav').classList.remove('hidden');
                 document.getElementById('navTopAdmin')?.classList.remove('hidden');
+                document.getElementById('navAdmin')?.classList.remove('hidden');
                 document.getElementById('adminActBtn')?.classList.remove('hidden');
             }
 
@@ -1666,7 +2000,8 @@
 
         async function loginGuest() {
             CU = { uid: 'guest', name: 'Guest', email: 'guest@local', isAdmin: false, isGuest: true };
-            plugins = await loadD('plugins'); wishlist = await loadD('wishlist'); tags = await loadD('tags'); regEmails = await loadD('emails');
+            plugins = await loadD('plugins'); wishlist = await loadD('wishlist'); tags = await loadD('tags'); regEmails = await loadD('emails'); memos = await loadD('memos');
+            await initMemoManual();
             let hasDefaultTags = localStorage.getItem(uKey('guest', 'tags_init'));
             if (!hasDefaultTags) {
                 tags = [
@@ -1776,22 +2111,23 @@
                 currentTab = t;
 
                 // 1. Content Switching
-                ['tabOwned', 'tabWishlist', 'tabSettings', 'tabAdmin'].forEach(id => {
+                ['tabOwned', 'tabWishlist', 'tabSettings', 'tabAdmin', 'tabMemo'].forEach(id => {
                     const el = document.getElementById(id);
                     if (el) el.classList.add('hidden');
                 });
 
-                const titles = { owned: '所有プラグイン', wishlist: '⭐ ウィッシュリスト', settings: '⚙️ 設定', admin: '👑 管理者パネル' };
+                const titles = { owned: '所有プラグイン', wishlist: '⭐ ウィッシュリスト', settings: '⚙️ 設定', admin: '👑 管理者パネル', memo: '📝 メモ' };
                 const pt = document.getElementById('pageTitle');
                 if (pt) pt.textContent = titles[t] || '';
 
                 const ta = document.getElementById('topActions');
-                if (ta) ta.style.display = t === 'owned' ? '' : 'none';
+                if (ta) ta.style.display = (t === 'owned' || t === 'wishlist' || t === 'memo') ? '' : 'none';
 
                 if (t === 'owned') document.getElementById('tabOwned')?.classList.remove('hidden');
                 else if (t === 'wishlist') { document.getElementById('tabWishlist')?.classList.remove('hidden'); if (typeof renderWish === 'function') renderWish(); }
                 else if (t === 'settings') { document.getElementById('tabSettings')?.classList.remove('hidden'); if (typeof renderTags === 'function') renderTags(); }
                 else if (t === 'admin') { document.getElementById('tabAdmin')?.classList.remove('hidden'); if (typeof renderAdmin === 'function') renderAdmin(); }
+                else if (t === 'memo') { document.getElementById('tabMemo')?.classList.remove('hidden'); if (typeof renderMemoSidebar === 'function') renderMemoSidebar(); }
 
                 if (window.innerWidth < 1024) closeSidebar();
 
@@ -1805,7 +2141,7 @@
                     const icon = b.querySelector('.text-xl');
                     if (icon) icon.classList.remove('text-a-400');
                 });
-                const bMap = { owned: 'navOwned', wishlist: 'navWish', settings: 'navSet' };
+                const bMap = { owned: 'navOwned', wishlist: 'navWish', settings: 'navSet', admin: 'navAdmin', memo: 'navMemo' };
                 if (bMap[t]) {
                     const b = document.getElementById(bMap[t]);
                     if (b) b.classList.add('text-a-400');
@@ -2072,9 +2408,49 @@
         }
 
         function handleAddButtonClick() {
-            if (currentTab === 'wishlist') openWishModal();
-            else openModal();
+            if (currentTab === 'memo') {
+                if (!activeMemoId) { toast('⚠️ ページを選択してください'); return; }
+                openPicker();
+            } else if (currentTab === 'wishlist') {
+                openWishModal();
+            } else {
+                openModal();
+            }
         }
+
+        // ============ PICKER ============
+        function openPicker() {
+            document.getElementById('pickerModal').classList.remove('hidden');
+            document.getElementById('pickerSearch').value = '';
+            document.getElementById('pickerSearch').focus();
+            renderPicker();
+        }
+
+        function closePicker() {
+            document.getElementById('pickerModal').classList.add('hidden');
+        }
+
+        function renderPicker() {
+            const q = document.getElementById('pickerSearch').value.toLowerCase();
+            const list = document.getElementById('pickerList');
+            const filtered = plugins.filter(p => !q || p.name.toLowerCase().includes(q) || (p.maker || '').toLowerCase().includes(q));
+
+            list.innerHTML = filtered.map(p => `
+                <div onclick="pickPlugin('${p.id}')" class="flex items-center gap-3 p-2 hover:bg-white/5 rounded-lg cursor-pointer transition-colors">
+                    <span class="text-xl">${catIco(p.category)}</span>
+                    <div class="flex-1">
+                        <div class="text-xs font-bold text-white">${esc(p.name)}</div>
+                        <div class="text-[0.6rem] text-gray-500">${esc(p.maker)}</div>
+                    </div>
+                </div>
+            `).join('') || '<div class="text-center py-8 text-xs text-gray-600">見つかりません</div>';
+        }
+
+        function pickPlugin(id) {
+            insertBlock('plugin', slashTargetBlockId, { pluginId: id });
+            closePicker();
+        }
+
         function closeWishModal() { closeM('wModal'); }
 
         let delTarget = null, delType = 'plugin';
@@ -2443,7 +2819,7 @@
                     : '';
 
                 return `
-                    <div class="import-row ${bgClass}" style="animation-delay:${idx * 30}ms">
+                    <div class="import-row" style="animation-delay:${idx * 30}ms">
                         <input type="checkbox" id="chk_${idx}" ${isChecked ? 'checked' : ''} ${res.status === 'exists' ? 'disabled' : ''} 
                             class="w-4 h-4 rounded border-gray-600 text-a-500 focus:ring-a-500 bg-s-700">
                         <div class="flex-1 min-w-0">
@@ -2464,11 +2840,10 @@
         }
 
         function confirmBulkImport() {
-            const checkboxes = document.querySelectorAll('[data-import-idx]');
+            const checkboxes = document.querySelectorAll('[id^="chk_"]');
             let added = 0;
-            checkboxes.forEach(cb => {
+            checkboxes.forEach((cb, idx) => {
                 if (!cb.checked) return;
-                const idx = parseInt(cb.dataset.importIdx);
                 const item = pendingImports[idx];
                 if (item.status === 'exists') return;
                 const d = item.data;
@@ -2717,11 +3092,13 @@
                     wishlist = wSnap.exists() ? (wSnap.data().list || []) : [];
                     const tSnap = await window.firebase.getDoc(window.firebase.doc(db, 'users', uid, 'data', 'tags'));
                     tags = tSnap.exists() ? (tSnap.data().list || []) : [];
+                    const mSnap = await window.firebase.getDoc(window.firebase.doc(db, 'users', uid, 'data', 'memos')); memos = mSnap.exists() ? (mSnap.data().list || []) : [];
                 } catch (e) { console.error(e); toast('❌ データ取得失敗'); return; }
             } else {
                 plugins = JSON.parse(localStorage.getItem(uKey(uid, 'plugins')) || '[]');
                 wishlist = JSON.parse(localStorage.getItem(uKey(uid, 'wishlist')) || '[]');
                 tags = JSON.parse(localStorage.getItem(uKey(uid, 'tags')) || '[]');
+                memos = JSON.parse(localStorage.getItem(uKey(uid, 'memos')) || '[]');
             }
 
             // UI Updates for View Mode
@@ -2769,7 +3146,25 @@
         // One-time migration for tags
         function migrateTags() {
             let changed = false;
-            // 1. Migrate Global Tags List
+
+            // 1. Enforce 18 Default Tags
+            const defaults = [
+                { name: 'お気に入り', color: '#f97316' }, { name: 'マスタリング', color: '#a855f7' }, { name: 'ミキシング', color: '#22c55e' },
+                { name: 'ボーカル', color: '#ec4899' }, { name: 'ドラム', color: '#f43f5e' }, { name: 'ベース', color: '#3b82f6' },
+                { name: 'シンセ', color: '#06b6d4' }, { name: 'EQ/ダイナミクス', color: '#8b5cf6' }, { name: '空間系', color: '#10b981' },
+                { name: 'サチュレーション', color: '#ea580c' }, { name: 'モジュレーション', color: '#6366f1' }, { name: 'オーケストラ', color: '#d97706' },
+                { name: 'シネマティック', color: '#4f46e5' }, { name: 'ローファイ', color: '#7c3aed' }, { name: 'ギター', color: '#b91c1c' },
+                { name: 'ピアノ/鍵盤', color: '#0891b2' }, { name: 'ユーティリティ', color: '#4b5563' }, { name: '🔥 要チェック', color: '#f59e0b' }
+            ];
+
+            defaults.forEach(d => {
+                if (!tags.find(t => t.name === d.name)) {
+                    tags.push(d);
+                    changed = true;
+                }
+            });
+
+            // 2. Migrate Global Tags List (Legacy Translation)
             const newTags = [];
             tags.forEach(t => {
                 const trans = TAG_TRANSLATION[t.name];
@@ -2782,7 +3177,7 @@
             });
             if (changed) { tags = newTags; saveD('tags', tags); }
 
-            // 2. Migrate Plugin Tags
+            // 3. Migrate Plugin Tags
             let pChanged = false;
             plugins.forEach(p => {
                 if (p.tags && p.tags.length) {
@@ -2799,7 +3194,7 @@
             if (pChanged) { saveD('plugins', plugins); }
 
             if (changed || pChanged) {
-                toast('♻️ タグを日本語に変換しました');
+                toast('♻️ データを最新に更新しました');
                 renderTags(); renderTagFilterChips(); render();
             }
         }
@@ -2934,7 +3329,7 @@ ${!isReadOnly ? `<div class="flex gap-1"><button onclick="openModal('${p.id}')" 
 
         function renderWish() {
             const list = document.getElementById('wList'), empty = document.getElementById('emptyWish');
-            if (!wishlist.length) { list.innerHTML = ''; empty.classList.remove('hidden'); return; }
+            if (!wishlist.length) { list.innerHTML = ''; empty.classList.add('hidden'); return; }
             empty.classList.add('hidden'); const ord = { '高': 0, '中': 1, '低': 2 };
             const sorted = [...wishlist].sort((a, b) => (ord[a.priority] ?? 1) - (ord[b.priority] ?? 1));
             const isReadOnly = !!viewingUser;
@@ -2954,7 +3349,422 @@ ${!isReadOnly ? `<button onclick="moveToOwned('${w.id}')" class="text-xs text-gr
         }
 
         // ============ KEYBOARD ============
-        document.addEventListener('keydown', e => { if (e.key === 'Escape') { closeModal(); closeWishModal(); closeDelModal(); } });
+        document.addEventListener('keydown', e => { if (e.key === 'Escape') { closeModal(); closeWishModal(); closeDelModal(); closePicker(); } });
+
+        // ============ MEMO SYSTEM ============
+        let activeMemoId = null;
+        let slashTargetBlockId = null;
+
+        async function initMemoManual() {
+            if (memos.find(m => m.id === 'guide-page')) return;
+
+            const guide = {
+                id: 'guide-page',
+                parentId: null,
+                type: 'page',
+                title: 'PRM メモ帳：使い方マニュアル',
+                icon: '📘',
+                blocks: [
+                    { id: uid(), type: 'h1', content: 'Plugin Recovery Manager メモ機能へようこそ！' },
+                    { id: uid(), type: 'text', content: 'このメモ帳は、Notion風のブロックエディタを採用しており、プラグインの備忘録や制作のメモとして活用できます。' },
+                    { id: uid(), type: 'h2', content: '基本機能' },
+                    { id: uid(), type: 'text', content: '・**スラッシュコマンド**: 「/」を入力すると、見出しやプラグインを追加できるメニューが表示されます。' },
+                    { id: uid(), type: 'text', content: '・**ドラッグ＆ドロップ**: ブロックを長押し（クリックしたまま）して上下に動かすことで、入れ替えが可能です。' },
+                    { id: uid(), type: 'text', content: '・**隙間クリック**: ブロック同士の間やページ下部をクリックすると、その場所に新しい行を追加できます。' },
+                    { id: uid(), type: 'h2', content: '活用方法のヒント' },
+                    { id: uid(), type: 'text', content: '・**プラグイン管理**: 所有しているプラグインをメモ内に配置し、設定やプリセットの場所を書き留めておけます。' },
+                    { id: uid(), type: 'text', content: '・**フォルダ管理**: ジャンル別やプロジェクト別にフォルダを作成し、メモを整理しましょう。' },
+                    { id: uid(), type: 'text', content: '・**テーマ変更**: 右上のメニューから「セピア」や「モノクロ」を選び、集中できる環境を作れます。' }
+                ],
+                createdAt: new Date().toISOString(),
+                updatedAt: new Date().toISOString()
+            };
+
+            memos.unshift(guide); // Always at the top
+            await saveD('memos', memos);
+            renderMemoSidebar();
+        }
+
+        function toggleMemoSidebar() {
+            const sidebar = document.getElementById('memoSidebar');
+            const toggle = document.getElementById('memoSidebarToggle');
+            const icon = document.getElementById('toggleIcon');
+            const isCollapsed = sidebar.classList.toggle('collapsed');
+            icon.textContent = isCollapsed ? '▶' : '◀';
+            toggle.style.left = isCollapsed ? '0px' : '240px';
+        }
+
+        function renderMemoSidebar() {
+            const tree = document.getElementById('memoTree');
+            if (!tree) return;
+
+            const renderItem = (m, depth) => `
+                <div class="memo-item group flex items-center gap-2 ${activeMemoId === m.id ? 'active' : ''}" 
+                     style="padding-left: ${depth * 12 + 8}px" 
+                     draggable="true"
+                     ondragstart="onMemoDragStart(event, '${m.id}')"
+                     ondragover="onMemoDragOver(event, '${m.id}')"
+                     ondragleave="onMemoDragLeave(event, '${m.id}')"
+                     ondrop="onMemoDrop(event, '${m.id}')"
+                     onclick="openMemo('${m.id}')">
+                    <span class="shrink-0 text-gray-400 text-xs">${m.icon || (m.type === 'folder' ? '📂' : '📄')}</span>
+                    <span class="truncate flex-1 text-xs">${esc(m.title || '無題')}</span>
+                    ${m.id !== 'root' ? `<button onclick="event.stopPropagation(); deleteMemo('${m.id}')" class="opacity-0 group-hover:opacity-100 text-gray-600 hover:text-red-400 px-1 text-base leading-none">×</button>` : ''}
+                </div>
+                ${memos.filter(child => child.parentId === m.id).map(child => renderItem(child, depth + 1)).join('')}
+            `;
+
+            tree.innerHTML = memos.filter(m => !m.parentId).map(m => renderItem(m, 0)).join('') ||
+                '<div class="px-2 py-8 text-center text-[0.65rem] text-gray-600">ページがありません</div>';
+        }
+
+        let dragMemoId = null;
+
+        function onMemoDragStart(e, id) {
+            dragMemoId = id;
+            e.dataTransfer.effectAllowed = 'move';
+        }
+
+        function onMemoDragOver(e, id) {
+            e.preventDefault();
+            if (id === dragMemoId) return;
+            e.currentTarget.classList.add('drag-over');
+        }
+
+        function onMemoDragLeave(e, id) {
+            e.currentTarget.classList.remove('drag-over');
+        }
+
+        async function onMemoDrop(e, id) {
+            e.preventDefault();
+            e.currentTarget.classList.remove('drag-over');
+            if (id === dragMemoId) return;
+
+            const fromIdx = memos.findIndex(m => m.id === dragMemoId);
+            const toIdx = memos.findIndex(m => m.id === id);
+            if (fromIdx === -1 || toIdx === -1) return;
+
+            const [moved] = memos.splice(fromIdx, 1);
+            memos.splice(toIdx, 0, moved);
+
+            renderMemoSidebar();
+            await saveD('memos', memos);
+        }
+
+        async function addMemoPage(parentId = null, type = 'page') {
+            const id = uid();
+            const newItem = {
+                id,
+                parentId,
+                type,
+                title: '',
+                icon: type === 'folder' ? '📂' : '📄',
+                blocks: type === 'page' ? [{ id: uid(), type: 'text', content: '' }] : [],
+                createdAt: new Date().toISOString(),
+                updatedAt: new Date().toISOString()
+            };
+            memos.push(newItem);
+            await saveD('memos', memos);
+            renderMemoSidebar();
+            if (type === 'page') openMemo(id);
+        }
+
+        async function deleteMemo(id) {
+            const memo = memos.find(m => m.id === id);
+            if (!memo) return;
+            if (!confirm(`「${memo.title || '無題'}」を削除しますか？`)) return;
+
+            const getIdsToDelete = (targetId) => {
+                let ids = [targetId];
+                memos.filter(m => m.parentId === targetId).forEach(child => {
+                    ids = ids.concat(getIdsToDelete(child.id));
+                });
+                return ids;
+            };
+
+            const idsToDelete = getIdsToDelete(id);
+            memos = memos.filter(m => !idsToDelete.includes(m.id));
+
+            await saveD('memos', memos);
+            if (idsToDelete.includes(activeMemoId)) {
+                activeMemoId = null;
+                document.getElementById('memoEditor').classList.add('hidden');
+                document.getElementById('emptyMemo').classList.remove('hidden');
+            }
+            renderMemoSidebar();
+        }
+
+        function openMemo(id) {
+            activeMemoId = id;
+            const memo = memos.find(m => m.id === id);
+            if (!memo) return;
+
+            if (memo.type === 'folder') {
+                document.getElementById('emptyMemo').classList.add('hidden');
+                document.getElementById('memoEditor').classList.remove('hidden');
+                document.getElementById('memoActiveTitle').value = memo.title;
+
+                const children = memos.filter(m => m.parentId === id);
+                const container = document.getElementById('blockContainer');
+                container.innerHTML = `
+                    <div class="p-4 bg-s-700/30 rounded-lg border border-white/5">
+                        <p class="text-[0.6rem] uppercase tracking-widest text-gray-500 font-bold mb-4">このフォルダ内のアイテム</p>
+                        <div class="space-y-1">
+                            ${children.map(c => `
+                                <div onclick="openMemo('${c.id}')" class="flex items-center gap-3 p-2 hover:bg-white/5 rounded-lg cursor-pointer transition-colors group">
+                                    <span class="text-xl">${c.icon || (c.type === 'folder' ? '📂' : '📄')}</span>
+                                    <div class="flex-1">
+                                        <div class="text-xs font-bold text-white">${esc(c.title || '無題')}</div>
+                                        <div class="text-[0.6rem] text-gray-500">${new Date(c.updatedAt).toLocaleDateString()}</div>
+                                    </div>
+                                    <span class="text-gray-600 group-hover:text-white transition-colors">→</span>
+                                </div>
+                            `).join('') || '<p class="text-center py-8 text-xs text-gray-600">アイテムがありません</p>'}
+                        </div>
+                    </div>
+                `;
+                renderMemoSidebar();
+                return;
+            }
+
+            document.getElementById('emptyMemo').classList.add('hidden');
+            document.getElementById('memoEditor').classList.remove('hidden');
+            document.getElementById('memoActiveTitle').value = memo.title;
+
+            renderBlocks(memo.blocks);
+            renderMemoSidebar();
+
+            // Focus the first block if it's text
+            setTimeout(() => {
+                const first = document.querySelector(`#block-${memo.blocks[0]?.id} .block-text`);
+                if (first) first.focus();
+            }, 50);
+        }
+
+        function renderBlocks(blocks) {
+            const container = document.getElementById('blockContainer');
+            container.innerHTML = (blocks || []).map(b => renderBlock(b)).join('');
+        }
+
+        function renderBlock(b) {
+            if (b.type === 'plugin') {
+                const p = plugins.find(x => x.id === b.data?.pluginId);
+                return `
+                    <div class="block" id="block-${b.id}"
+                     draggable="true" 
+                     ondragstart="onDragStart(event, '${b.id}')"
+                     ondragover="onDragOver(event, '${b.id}')"
+                     ondragleave="onDragLeave(event, '${b.id}')"
+                     ondrop="onDrop(event, '${b.id}')">
+                        <div class="block-plugin">
+                            <span class="text-2xl">${catIco(p?.category)}</span>
+                            <div class="flex-1">
+                                <div class="text-xs font-bold text-white">${esc(p?.name || '不明なプラグイン')}</div>
+                                <div class="text-[0.6rem] text-gray-500">${esc(p?.maker)}</div>
+                            </div>
+                            <button onclick="openModal('${p?.id}')" class="text-[0.6rem] bg-s-700 hover:bg-s-600 px-2 py-1 rounded border border-white/5">詳細</button>
+                            <button onclick="removeBlock('${b.id}')" class="text-gray-600 hover:text-red-400">×</button>
+                        </div>
+                    </div>
+                `;
+            }
+
+            const placeholder = b.type === 'text' ? 'テキストを入力、または \"/\" でコマンド...' : '見出し';
+            const fontSize = b.type === 'h1' ? 'text-2xl font-bold' : b.type === 'h2' ? 'text-xl font-bold' : '';
+
+            return `
+                <div class="block group" id="block-${b.id}" data-type="${b.type}" 
+                     draggable="true" 
+                     ondragstart="onDragStart(event, '${b.id}')"
+                     ondragover="onDragOver(event, '${b.id}')"
+                     ondragleave="onDragLeave(event, '${b.id}')"
+                     ondrop="onDrop(event, '${b.id}')">
+                    <div contenteditable="true" 
+                         class="block-text ${fontSize}" 
+                         data-placeholder="${placeholder}"
+                         oninput="onBlockInput(event, '${b.id}')"
+                         onkeydown="onBlockKeydown(event, '${b.id}')"
+                         onfocus="onBlockFocus('${b.id}')"
+                    >${b.content || ''}</div>
+                </div>
+            `;
+        }
+
+        let dragTargetId = null;
+
+        function onDragStart(e, id) {
+            dragTargetId = id;
+            e.dataTransfer.effectAllowed = 'move';
+            e.dataTransfer.setData('text/plain', id);
+        }
+
+        function onDragOver(e, id) {
+            e.preventDefault();
+            if (id === dragTargetId) return;
+            document.getElementById(`block-${id}`).classList.add('drag-over');
+        }
+
+        function onDragLeave(e, id) {
+            document.getElementById(`block-${id}`).classList.remove('drag-over');
+        }
+
+        async function onDrop(e, id) {
+            e.preventDefault();
+            document.getElementById(`block-${id}`).classList.remove('drag-over');
+            if (id === dragTargetId) return;
+
+            const memo = memos.find(m => m.id === activeMemoId);
+            const fromIdx = memo.blocks.findIndex(b => b.id === dragTargetId);
+            const toIdx = memo.blocks.findIndex(b => b.id === id);
+
+            const [moved] = memo.blocks.splice(fromIdx, 1);
+            memo.blocks.splice(toIdx, 0, moved);
+
+            renderBlocks(memo.blocks);
+            await saveD('memos', memos);
+        }
+
+        function handleEditorClick(e) {
+            const container = document.getElementById('blockContainer');
+            if (e.target !== container) return;
+
+            const blocks = Array.from(document.querySelectorAll('.block'));
+            let insertAfterId = null;
+
+            // Find the last block that is above the click point
+            for (const b of blocks) {
+                const rect = b.getBoundingClientRect();
+                if (e.clientY > rect.bottom) {
+                    insertAfterId = b.id.replace('block-', '');
+                } else {
+                    break;
+                }
+            }
+
+            // If we didn't find a block above, and there are blocks, we click at the very top
+            // But usually we want to append or insert.
+            insertBlock('text', insertAfterId);
+        }
+
+        function onBlockFocus(id) {
+            // Placeholder for focus logic
+        }
+
+        function onBlockInput(e, id) {
+            const text = e.target.innerText;
+            const memo = memos.find(m => m.id === activeMemoId);
+            const block = memo.blocks.find(b => b.id === id);
+            block.content = text;
+            memo.updatedAt = new Date().toISOString();
+
+            if (text === '/') {
+                showSlashMenu(e.target);
+            } else {
+                hideSlashMenu();
+            }
+        }
+
+        function onBlockKeydown(e, id) {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                insertBlock('text', id);
+            } else if (e.key === 'Backspace' && e.target.innerText === '') {
+                const memo = memos.find(m => m.id === activeMemoId);
+                if (memo.blocks.length > 1) {
+                    e.preventDefault();
+                    const idx = memo.blocks.findIndex(b => b.id === id);
+                    const prev = memo.blocks[idx - 1];
+                    removeBlock(id);
+                    if (prev && prev.type !== 'plugin') {
+                        setTimeout(() => {
+                            const el = document.querySelector(`#block-${prev.id} .block-text`);
+                            if (el) {
+                                el.focus();
+                                // Move cursor to end
+                                const range = document.createRange();
+                                const sel = window.getSelection();
+                                range.selectNodeContents(el);
+                                range.collapse(false);
+                                sel.removeAllRanges();
+                                sel.addRange(range);
+                            }
+                        }, 50);
+                    }
+                }
+            }
+        }
+
+        async function insertBlock(type, afterId = null, data = null) {
+            const memo = memos.find(m => m.id === activeMemoId);
+            if (!memo) return;
+
+            if (type === 'page') {
+                hideSlashMenu();
+                addMemoPage(memo.id); // Add subpage
+                return;
+            }
+
+            const newBlock = { id: uid(), type, content: '', data };
+
+            if (type === 'plugin' && !data) {
+                slashTargetBlockId = afterId; // Remember where we were
+                openPicker();
+                return;
+            }
+
+            if (afterId) {
+                const idx = memo.blocks.findIndex(b => b.id === afterId);
+                memo.blocks.splice(idx + 1, 0, newBlock);
+            } else {
+                memo.blocks.push(newBlock);
+            }
+
+            hideSlashMenu();
+            renderBlocks(memo.blocks);
+            await saveD('memos', memos);
+
+            if (newBlock.type !== 'plugin') {
+                setTimeout(() => {
+                    const el = document.querySelector(`#block-${newBlock.id} .block-text`);
+                    if (el) el.focus();
+                }, 50);
+            }
+        }
+
+        function applyMemoTheme(theme) {
+            const el = document.getElementById('tabMemo');
+            el.classList.remove('theme-notion-light', 'theme-sepia', 'theme-mono');
+            if (theme !== 'default') el.classList.add(`theme-${theme}`);
+        }
+
+        async function removeBlock(id) {
+            const memo = memos.find(m => m.id === activeMemoId);
+            memo.blocks = memo.blocks.filter(b => b.id !== id);
+            renderBlocks(memo.blocks);
+            await saveD('memos', memos);
+        }
+
+        async function updateMemoTitle() {
+            const title = document.getElementById('memoActiveTitle').value;
+            const memo = memos.find(m => m.id === activeMemoId);
+            memo.title = title;
+            memo.updatedAt = new Date().toISOString();
+            renderMemoSidebar();
+            await saveD('memos', memos);
+        }
+
+        function showSlashMenu(el) {
+            const menu = document.getElementById('slashMenu');
+            const rect = el.getBoundingClientRect();
+            menu.style.top = (rect.bottom + window.scrollY) + 'px';
+            menu.style.left = rect.left + 'px';
+            menu.classList.remove('hidden');
+            slashTargetBlockId = el.closest('.block').id.replace('block-', '');
+        }
+
+        function hideSlashMenu() {
+            document.getElementById('slashMenu').classList.add('hidden');
+        }
 
         // ============ INITIALIZATION ============
         window.addEventListener('load', () => {
